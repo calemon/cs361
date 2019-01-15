@@ -19,6 +19,11 @@ void Set(volatile uint32_t *bitset, int bit_index){
 }
 
 void Clear(volatile uint32_t *bitset, int bit_index){
+    if(bit_index > 31 || bit_index < -32) return;
+    if(bit_index < 0) bit_index += 32;
+
+    *bitset &= ~(1 << bit_index);
+
     return;
 }
 
