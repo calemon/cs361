@@ -57,14 +57,69 @@ TEST_CASE( "Set individual bit", "[bitSet]" ) {
         Set(&bitset, -29);
         CHECK( bitset == 2147483656 );
     }
+
+    bitset = 24;
+    SECTION("bitset = 24, setting bit at index 35") {
+        Set(&bitset, 35);
+        CHECK( bitset == 24 );
+    }
+
+    bitset = 34;
+    SECTION("bitset = 34, setting bit at index 32") {
+        Set(&bitset, 32);
+        CHECK( bitset == 34 );
+    }
+
+    bitset = 98;
+    SECTION("bitset = 98, setting bit at index -128") {
+        Set(&bitset, -128);
+        CHECK( bitset == 98 );
+    }
 }
 
 TEST_CASE( "Clear individual bit", "[bitClear]" ) {
     uint32_t bitset;
-    SECTION("Setting bit at index 2") {
-        bitset = 6;
+
+    bitset = 6;
+    SECTION("bitset = 6, clearing bit at index 2") {
         Clear(&bitset, 2);
         CHECK( bitset == 2 );
+    }
+
+    bitset = 22;
+    SECTION("bitset = 22, clearing bit at index 4") {
+        Clear(&bitset, 4);
+        CHECK( bitset == 6 );
+    }
+
+    bitset = 17;
+    SECTION("bitset = 17, clearing bit at index -32") {
+        Clear(&bitset, -32);
+        CHECK( bitset == 16 );
+    }
+
+    bitset = 53452;
+    SECTION("bitset = 53452, clearing bit at index -25") {
+        Clear(&bitset, -25);
+        CHECK( bitset == 53324 );
+    }
+
+    bitset = 24;
+    SECTION("bitset = 24, clearing bit at index 35") {
+        Clear(&bitset, 35);
+        CHECK( bitset == 24 );
+    }
+
+    bitset = 34;
+    SECTION("bitset = 34, clearing bit at index 32") {
+        Clear(&bitset, 32);
+        CHECK( bitset == 34 );
+    }
+
+    bitset = 98;
+    SECTION("bitset = 98, clearing bit at index -128") {
+        Clear(&bitset, -128);
+        CHECK( bitset == 98 );
     }
 }
 
