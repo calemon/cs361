@@ -13,7 +13,7 @@ constexpr uint32_t Mask(int bit_start, int bit_end){
         bit_end = temp;
     }
 
-    for(int i = bit_start; i <= bit_end; i++) mask |= 1 << i;
+    mask = (((1 << (bit_end - bit_start)) - 1) << bit_start) | (1 << bit_end);
 
     return mask;
 }
@@ -162,12 +162,24 @@ TEST_CASE( "Get bit mask", "[bitMask]" ) {
     CHECK(Mask(-27, -30) == 60);
     CHECK(Mask(2, -27) == 60);
     CHECK(Mask(5, -30) == 60);
+
     CHECK(Mask(10, 2) == 2044);
     CHECK(Mask(2, 10) == 2044);
     CHECK(Mask(-22, -30) == 2044);
     CHECK(Mask(-30, -22) == 2044);
     CHECK(Mask(-22, 2) == 2044);
     CHECK(Mask(-30, 10) == 2044);
+
+    CHECK(Mask(0, 31) == 4294967295);
+    CHECK(Mask(0, 30) == 2147483647);
+    CHECK(Mask(1, 31) == 4294967294);
+    CHECK(Mask(0, 32) == 0);
+
+    CHECK(Mask(0, 0) == 1);
+    CHECK(Mask(0, 1) == 3);
+    CHECK(Mask(3, 3) == 8);
+    CHECK(Mask(31, 31) == 2147483648);
+    CHECK(Mask(-32, -1) == 4294967295);
 }
 
 TEST_CASE( "All function test", "[all]" ) {
