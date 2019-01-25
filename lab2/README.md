@@ -80,6 +80,7 @@ virt.lds
 You will be programming the ns16550a chipset for the UART driver. This is a fully MMIO (memory mapped I/O) chipset and is based at the memory address: 0x10000000. All registers are at base + offset.
 
 The following table describes the NS16550a registers (each register is exactly 8-bits [1-byte]):
+
 | Offset | Read/Write | Description                       |
 | ------ | ---------- | --------------------------------- |
 | 0x00   | Read-only  | RBR: Receiver Buffer Register     |
