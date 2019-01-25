@@ -1,3 +1,17 @@
+/*
+* Lab 2 - UART Driver
+* Date: 15 February 2018
+* Author: Casey Lemon
+*/
+
+char *const UART_BASE = (char *) 0x10000000;
+const char *const UART_RBR = UART_BASE + 0;
+char *const UART_THR = UART_BASE + 0;
+char *const UART_LCR = UART_BASE + 3;
+const char *const UART_LSR = UART_BASE + 5;
+char *const UART_DLL = UART_BASE + 0;
+char *const UART_DLM = UART_BASE + 0;
+
 void init();
 char read_char();
 void write_char(char c);
