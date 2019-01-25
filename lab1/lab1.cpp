@@ -8,7 +8,6 @@
 */
 
 #include "lab1.h"
-#include <iostream>
 // #include <stdint.h>
 
 bool Test(const volatile uint32_t *bitset, int bit_index){
