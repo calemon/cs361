@@ -1,4 +1,4 @@
-# Lab 1
+# Lab 2
 
 ## Assignment
 You will be creating a UART (Universal Asynchronous Receiver Transmitter) driver for MZOS (Marz OS). The point of this lab is to learn how to control hardware from an operating system. The programming part requires no more knowledge than pointers and pointer arithmetic.
