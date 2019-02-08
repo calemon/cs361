@@ -142,12 +142,12 @@ void to_string(char *dest, int value){
         value *= -1;
     } else if(value == 0){
         dest[i++] = '0';
-    } else {
-        /* Get each digit by taking the mod 10 of the value as a digit then divide value by 10 */
-        while(value > 0){
-            dest[i++] = (value % 10) + '0';
-            value /= 10;
-        }
+    }
+    
+    /* Get each digit by taking the mod 10 of the value as a digit then divide value by 10 */
+    while(value > 0){
+        dest[i++] = (value % 10) + '0';
+        value /= 10;
     }
 
     /* The above algorithm produces the number in reverse order, so reverse again to correct the order */
