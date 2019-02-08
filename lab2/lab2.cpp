@@ -82,15 +82,19 @@ void extract_two_numbers(int &left, int &right, bool echo){
     int left_number_index = 0, right_number_index = 0;
     bool negative = false, digit_read = false;
 
+    /* Begin reading the first number */
     while((first = read_char()) != '\n'){
         if(first >= '0' && first <= '9'){
+            /* Only digits will be saved onto the appropiate char array */
             if(echo) write_char(first);
             digit_read = true;
             left_number_string[left_number_index++] = first;
         } else if(first == '-' && digit_read == false){
+            /* A negative will be tracked if a digit has not been read yet */
             if(echo) write_char(first);
             negative = true;
         } else if(first == ' ' && digit_read == true){
+            /* Once a space is read and at least one digit has been read, then break */
             if(echo) write_char(first);
             left_number_string[left_number_index] = '\0';
             break;
@@ -99,8 +103,10 @@ void extract_two_numbers(int &left, int &right, bool echo){
         }
     }
 
+    /* Convert the first entered number from a char array to an integer value */
     left = to_int(left_number_string, left_number_index, negative);
 
+    /* Reset and do same procedure for second number */
     digit_read = false;
     negative = false;
     while((second = read_char()) != '\r'){
@@ -119,6 +125,7 @@ void extract_two_numbers(int &left, int &right, bool echo){
         }
     }
 
+    /* Convert right number to actual integer value */
     right = to_int(right_number_string, right_number_index, negative);
 
     return;
@@ -142,7 +149,6 @@ void to_string(char *dest, int value){
             value /= 10;
         }
     }
-
 
     /* The above algorithm produces the number in reverse order, so reverse again to correct the order */
     length = i;
