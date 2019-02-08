@@ -22,7 +22,7 @@ void write_string(const char *out);
 void write_stringln(const char *out);
 void extract_two_numbers(int &left, int &right, bool echo);
 void to_string(char *dest, int value);
-int to_int(char *number_string, int length);
+int to_int(char *number_string, int length, bool is_negative);
 
 void init(){
     /* Calculate divisor */
@@ -64,32 +64,14 @@ void write_char(char c){
 }
 
 void write_string(const char *out){
-    for(int i = 0; out[i] != '\0'; i++){
-        /*
-        while(((*UART_LSR >> 6) & 1) != 1);
-        *UART_THR = out[i];
-        */
-        write_char(out[i]);
-    }
+    for(int i = 0; out[i] != '\0'; i++) write_char(out[i]);
     return;
 }
 
 void write_stringln(const char *out){
-    for(int i = 0; out[i] != '\0'; i++){
-        /*
-        while(((*UART_LSR >> 6) & 1) != 1);
-        *UART_THR = out[i];
-        */
-        write_char(out[i]);
-    }
+    for(int i = 0; out[i] != '\0'; i++) write_char(out[i]);
     write_char('\r');
     write_char('\n');
-    /*
-    while(((*UART_LSR >> 6) & 1) != 1);
-    *UART_THR = '\r';
-    while(((*UART_LSR >> 6) & 1) != 1);
-    *UART_THR = '\n';
-    */
 
     return;
 }
@@ -107,17 +89,17 @@ void extract_two_numbers(int &left, int &right, bool echo){
             left_number_string[left_number_index++] = first;
         } else if(first == '-' && digit_read == false){
             if(echo) write_char(first);
-            negative = !negative;
+            negative = true;
         } else if(first == ' ' && digit_read == true){
             if(echo) write_char(first);
-            digit_read = false;
-            negative = false;
             left_number_string[left_number_index] = '\0';
             break;
         } else if(first == ' '){
             if(echo) write_char(first);
         }
     }
+
+    left = to_int(left_number_string, left_number_index, negative);
 
     digit_read = false;
     negative = false;
@@ -126,21 +108,18 @@ void extract_two_numbers(int &left, int &right, bool echo){
             if(echo) write_char(second);
             digit_read = true;
             right_number_string[right_number_index++] = second;
-        } else if(second == '-' && digit_read == false ){
+        } else if(second == '-' && digit_read == false){
             if(echo) write_char(second);
-            negative = !negative;
+            negative = true;
         } else if(second == ' '){
             if(echo) write_char(first);
         } else if(second == '\n' && digit_read == true){
-            digit_read = false;
-            negative = false;
             right_number_string[right_number_index] = '\0';
             break;
         }
     }
 
-    left = to_int(left_number_string, left_number_index);
-    right = to_int(right_number_string, right_number_index);
+    right = to_int(right_number_string, right_number_index, negative);
 
     return;
 }
@@ -148,6 +127,12 @@ void extract_two_numbers(int &left, int &right, bool echo){
 void to_string(char *dest, int value){
     int i = 0, length;
     char temp;
+    bool is_negative = false;
+    if(value < 0){
+        is_negative = true;
+        value *= -1;
+    }
+
     while(value > 0){
         dest[i] = (value % 10) + '0';
         value /= 10;
@@ -161,12 +146,20 @@ void to_string(char *dest, int value){
         dest[i-1] = temp;
     }
 
+    if(is_negative){
+        for(int j = length; j >= 0; j--){
+            dest[j+1] = dest[j];
+        }
+        dest[0] = '-';
+        length++;
+    }
+
     dest[length] = '\0';
 
     return;
 }
 
-int to_int(char *number_string, int length){
+int to_int(char *number_string, int length, bool is_negative){
     int multiplier = 1, sum = 0, temp;
 
     for(int i = length - 1; i >= 0; i--){
@@ -175,5 +168,6 @@ int to_int(char *number_string, int length){
         multiplier *= 10;
     }
 
+    if(is_negative) sum *= -1;
     return sum;
 }
