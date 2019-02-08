@@ -128,17 +128,21 @@ void to_string(char *dest, int value){
     int i = 0, length;
     char temp;
     bool is_negative = false;
+
+    /* If the value is negative, set the flag and make value positive */
     if(value < 0){
         is_negative = true;
         value *= -1;
     }
 
+    /* Get each digit by taking the mod 10 of the value as a digit then divide value by 10 */
     while(value > 0){
         dest[i] = (value % 10) + '0';
         value /= 10;
         i++;
     }
 
+    /* The above algorithm produces the number in reverse order, so reverse again to correct the order */
     length = i;
     for(int j = 0; j < i; j++, i--){
         temp = dest[j];
@@ -146,6 +150,8 @@ void to_string(char *dest, int value){
         dest[i-1] = temp;
     }
 
+    /* If the value was originally negative, then shift each character
+     to the right one and set the first character to '-' */
     if(is_negative){
         for(int j = length; j >= 0; j--){
             dest[j+1] = dest[j];
@@ -155,19 +161,21 @@ void to_string(char *dest, int value){
     }
 
     dest[length] = '\0';
-
     return;
 }
 
+/* Helper function to convert a number in a string format to it's integer equivalent */
 int to_int(char *number_string, int length, bool is_negative){
     int multiplier = 1, sum = 0, temp;
-
+    /* Going from the back to the front, multiply the digit at the current index
+    by the multiplier (a factor of 10) and continuously sum up the result */
     for(int i = length - 1; i >= 0; i--){
         temp = (number_string[i] - '0') * multiplier;
         sum += temp;
         multiplier *= 10;
     }
 
+    /* If the value was originally negative, make it negative again */
     if(is_negative) sum *= -1;
     return sum;
 }
