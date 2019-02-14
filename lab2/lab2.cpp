@@ -4,6 +4,10 @@
 * Author: Casey Lemon
 */
 
+using uint8_t = unsigned char;
+using uint16_t = unsigned short;
+using uint32_t = unsigned int;
+
 char *const UART_BASE = (char *) 0x10000000;
 const char *const UART_RBR = UART_BASE + 0;
 char *const UART_THR = UART_BASE + 0;
@@ -12,8 +16,8 @@ const char *const UART_LSR = UART_BASE + 5;
 char *const UART_DLL = UART_BASE + 0;
 char *const UART_DLM = UART_BASE + 1;
 
-const int OSC = 18000000;
-const int BAUD = 115200;
+const uint32_t OSC = 18000000;
+const uint32_t BAUD = 115200;
 
 void init();
 char read_char();
@@ -26,7 +30,7 @@ int to_int(char *number_string, int length, bool is_negative);
 
 void init(){
     /* Calculate divisor */
-    int divisor = (OSC / BAUD) - 1;
+    uint32_t divisor = (OSC / BAUD) - 1;
 
     /* Set DLAB to 1 */
     *UART_LCR |= 1 << 7;
