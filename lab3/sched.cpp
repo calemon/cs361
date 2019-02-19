@@ -38,11 +38,11 @@ static void proc_10_secs_sleep() {
 	wait();
 }
 
-static void proc_20_secs_run() {
-	uint32_t END_AFTER = get_timer_lo() / TIMER_FREQ + 20;
+static void proc_infinite_loop() {
+	uint32_t END_AFTER = get_timer_lo() / TIMER_FREQ - 20;
 
-	write_stringln("\r\nI do nothing but quit after 20 seconds");
-	while(get_timer_lo() / TIMER_FREQ < END_AFTER);
+	write_stringln("\r\nI do nothing but run for and infinite amount of time");
+	while(get_timer_lo() / TIMER_FREQ > END_AFTER);
 }
 
 void add_new_process(int padd) {
@@ -51,7 +51,7 @@ void add_new_process(int padd) {
 			new_process(proc_10_secs_run, "10 second run process", 10);
 			break;
 		case 2:
-			new_process(proc_20_secs_run, "20 second run process", 10);
+			new_process(proc_infinite_loop, "Infinite loop process", 10);
 			break;
 		default:
 			new_process(proc_10_secs_sleep, "10 second sleep process", 10);
@@ -77,8 +77,8 @@ void new_process(void (*func)(), const char *name, int32_t priority) {
 	if(found_dead_process != true) return;
 	
 	/* Clamp priority number if above lowest priority (10) or below highest priority (-10) */
-	if(priority > LOWEST_PRIORITY) priority = 10;
-	else if(priority < HIGHEST_PRIORITY) priority = -10;
+	if(priority > LOWEST_PRIORITY) priority = LOWEST_PRIORITY;
+	else if(priority < HIGHEST_PRIORITY) priority = HIGHEST_PRIORITY;
 
 	/* Fill in new process information */
 	strcpy(new_proc->name, name);
@@ -86,73 +86,58 @@ void new_process(void (*func)(), const char *name, int32_t priority) {
 	new_proc->pid = available_index + 1;
 	new_proc->priority = priority;
 	new_proc->program = func;
-	new_proc->runtime = 0;
 	new_proc->start_time = get_timer_lo() / TIMER_FREQ;
-	new_proc->regs[REGISTERS::SP] = (uint32_t) &stack_space[(STACK_ALLOC * available_index) - 1];
+	new_proc->regs[REGISTERS::SP] = (uint32_t) &stack_space[STACK_ALLOC * new_proc->pid - 1];
 	new_proc->regs[REGISTERS::RA] = (uint32_t) recover;
-	new_proc->quantum_multiplier = 0;
-
-	//print_process_list();
 }
 
 void del_process(PROCESS *p) {
 	p->state = PROCESS_STATE::DEAD;
-	p->priority = 10;
+	p->pid = 0;
+	clear_string(p->name, 32);
 }
 
 void sleep_process(PROCESS *p, uint32_t sleep_time) {
-	p->sleep_time = get_timer_lo() / TIMER_FREQ + sleep_time;
 	p->state = PROCESS_STATE::SLEEPING;
+	p->sleep_time = get_timer_lo() / TIMER_FREQ + sleep_time;
 }
 
 PROCESS *schedule(PROCESS *current) {
-	PROCESS *next_process, *temp;
-	bool found_process = false;
-	int32_t found_index = current->pid;
-	char print_str[32];
-	//unsigned long long timer = (unsigned long long) get_timer_hi() << 32 | get_timer_lo();
+	PROCESS *temp;
+	uint32_t current_time;
 
 	/* Check for any sleeping processes, wake if the process is past expired time */
 	for(uint32_t i = 0; i < MAX_PROCESSES; i++){
 		temp = &process_list[i];
-		/* If the process if in a sleeping state and it's past it's sleep time, then wake it. */
-		if(temp->state == PROCESS_STATE::SLEEPING && get_timer_lo() / TIMER_FREQ >= temp->sleep_time){
-			write_string("Changing PID ");
-			to_string(print_str, temp->pid);
-
+		current_time = get_timer_lo() / TIMER_FREQ;
+		/* If the process if in a sleeping state and the current time is past it's sleep time, then wake it. */
+		if(temp->state == PROCESS_STATE::SLEEPING && current_time >= temp->sleep_time){
 			temp->state = PROCESS_STATE::RUNNING;
 		}
 	}
 
 	switch (scheduling_algorithm) {
 		case SCHEDULE_ALGORITHM::SCHED_RR:
-			/* Look for next available process, starting with process after current->pid - 1 */
-			while(found_process == false){
-				if(found_index >= (int32_t) MAX_PROCESSES) {
-					found_index = 0;
+			/* Look for next process starting at process at index current->pid */
+			for(int32_t i = current->pid; i <= (int32_t) MAX_PROCESSES; i++){
+				temp = &process_list[i];
+
+				/* Reset i so that processes before current->pid will be checked */
+				if(i == MAX_PROCESSES){
+					i = -1;
 					continue;
 				}
-
-				temp = &process_list[found_index];
-				if(temp->state != PROCESS_STATE::RUNNING){
-					found_index++;
-					continue;
+				/* All processes were checked, so return init */
+				if(i == (int32_t) current->pid - 1){
+					temp = &process_list[0];
+					return temp;
 				}
 
-				found_process = true;
+				/* Check if process at index i is available as the next process */
+				if(temp->state == PROCESS_STATE::RUNNING){
+					return temp;
+				}
 			}
-
-			next_process = temp;
-
-			/* Account for runtime, num_switches, etc. of current process */
-			if(current != next_process){
-				current->runtime += get_timer_lo();
-				current->num_switches += 1;
-			}
-			write_string("Found new process: ");
-			write_stringln(next_process->name);
-			print_process(next_process);
-			return next_process;
 		case SCHEDULE_ALGORITHM::SCHED_ML:
 			break;
 		case SCHEDULE_ALGORITHM::SCHED_MLF:
@@ -163,6 +148,7 @@ PROCESS *schedule(PROCESS *current) {
 
 }
 
+/* Custom functions */
 static void clear_string(char *string, int str_length){
 	for(int32_t i = 0; i < str_length; i++) string[i] = '\0';
 }
@@ -172,22 +158,21 @@ static void print_process(PROCESS *proc){
 	
 	write_string("Process \'");
 	write_string(proc->name);
-	write_stringln("\' is running:");
-
+	write_string("\' (PID: ");
 	to_string(str, proc->pid);
-	write_string("  PID: ");
-	write_stringln(str);
+	write_string(str);
 	clear_string(str, 32);
+	write_stringln(")");
 
 	write_string("  Process State: ");
 	switch(proc->state){
-		case 0:
+		case PROCESS_STATE::DEAD:
 			write_stringln("DEAD");
 			break;
-		case 1:
+		case PROCESS_STATE::SLEEPING:
 			write_stringln("SLEEPING");
 			break;
-		case 2:
+		case PROCESS_STATE::RUNNING:
 			write_stringln("RUNNING");
 			break;
 		default:
@@ -202,6 +187,11 @@ static void print_process(PROCESS *proc){
 
 	to_string(str, proc->num_switches);
 	write_string("  Number of switches: ");
+	write_stringln(str);
+	clear_string(str, 32);
+
+	to_string(str, proc->start_time);
+	write_string("  Start Time: ");
 	write_stringln(str);
 	clear_string(str, 32);
 
