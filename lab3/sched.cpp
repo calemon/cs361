@@ -21,6 +21,8 @@ const int32_t HIGHEST_PRIORITY = -10;
 const int32_t LOWEST_PRIORITY = 10;
 
 /* Custom function declarations */
+static PROCESS *round_robin_sched(PROCESS *current);
+static PROCESS *multilevel_sched(PROCESS *current);
 static void clear_string(char *string, int str_length);
 static void print_process(PROCESS *proc);
 static void print_process_list();
@@ -103,8 +105,8 @@ void sleep_process(PROCESS *p, uint32_t sleep_time) {
 }
 
 PROCESS *schedule(PROCESS *current) {
-	PROCESS *temp;
 	uint32_t current_time;
+	PROCESS *temp;
 
 	/* Check for any sleeping processes, wake if the process is past expired time */
 	for(uint32_t i = 0; i < MAX_PROCESSES; i++){
@@ -118,28 +120,9 @@ PROCESS *schedule(PROCESS *current) {
 
 	switch (scheduling_algorithm) {
 		case SCHEDULE_ALGORITHM::SCHED_RR:
-			/* Look for next process starting at process at index current->pid */
-			for(int32_t i = current->pid; i <= (int32_t) MAX_PROCESSES; i++){
-				temp = &process_list[i];
-
-				/* Reset i so that processes before current->pid will be checked */
-				if(i == MAX_PROCESSES){
-					i = -1;
-					continue;
-				}
-				/* All processes were checked, so return init */
-				if(i == (int32_t) current->pid - 1){
-					temp = &process_list[0];
-					return temp;
-				}
-
-				/* Check if process at index i is available as the next process */
-				if(temp->state == PROCESS_STATE::RUNNING){
-					return temp;
-				}
-			}
+			return round_robin_sched(current);
 		case SCHEDULE_ALGORITHM::SCHED_ML:
-			break;
+			return multilevel_sched(current);
 		case SCHEDULE_ALGORITHM::SCHED_MLF:
 			break;
 		default:
@@ -149,6 +132,54 @@ PROCESS *schedule(PROCESS *current) {
 }
 
 /* Custom functions */
+static PROCESS *round_robin_sched(PROCESS *current){
+	PROCESS *temp;
+	/* Look for next process starting at process at index current->pid */
+	for(int32_t i = current->pid; i <= (int32_t) MAX_PROCESSES; i++){
+		temp = &process_list[i];
+
+		/* Reset i so that processes before current->pid will be checked */
+		if(i == MAX_PROCESSES){
+			i = -1;
+			continue;
+		}
+		/* All processes were checked, so return init */
+		if(i == (int32_t) current->pid - 1){
+			return &process_list[0];
+		}
+
+		/* Check if process at index i is available as the next process */
+		if(temp->state == PROCESS_STATE::RUNNING){
+			return temp;
+		}
+	}
+}
+
+static PROCESS *multilevel_sched(PROCESS *current){
+	/*
+	Start at highest priority, look for any processes in the highest priority and return if one exists.
+	Else, continue to next lower priority, search for process, and repeat until process is found. If not process
+	is found by lowest priority, then return init (process_list[0])
+	*/
+	PROCESS *temp;
+	for(int32_t current_priority = HIGHEST_PRIORITY; current_priority <= LOWEST_PRIORITY; current_priority++){
+		for(int32_t j = current->pid; j <= (int32_t) MAX_PROCESSES; j++){
+			/* Reached end of process_list, reset j to 0 */
+			if(j == MAX_PROCESSES){
+				j = -1;
+				continue;
+			}
+			/* Checked all processes, return init */
+			if(j == (int32_t) current->pid - 1) return &process_list[0];
+
+			temp = &process_list[j];
+			/* temp's priority is not the same as the current priority */
+			if(temp->priority != current_priority) continue;
+			if(temp->state == PROCESS_STATE::RUNNING) return temp;
+		}
+	}
+}
+
 static void clear_string(char *string, int str_length){
 	for(int32_t i = 0; i < str_length; i++) string[i] = '\0';
 }
