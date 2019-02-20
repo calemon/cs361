@@ -34,6 +34,8 @@ Locks
    - Mutex = Semaphore that goes from 0 to 1
    - Just like semaphore, except it allows only ONE process into the critical section at once.
 3) Barrier
+   - Ordering; Similar to a semaphore where there is a value and has a finish point
+   - **INSERT example from class**
 
 Semaphores and Mutexes are practically the same thing
 
@@ -43,6 +45,13 @@ AMO (Atomic Memory Operations): Atomic instruction cannot be preempted.
 - amoswap is meant for mutexes; Takes three params (dest, src, and address)
   - amoswap.w.aq t0, t1, (a0)
 
+Rules of locking:
+- Only one writer
+- No readers and writers
+
+Rules of ordering:
+- Want to maximize readers; Get as many readers done as possible
+  - Writing takes more work, so reading will be maximized
 # Clicker Questions
 1) How many bytes is the MTVEC (Machine trap vector) aligned by? 4 bytes
 2) Which register stores what instruction we return to when an instruction is interrupted? MEPC
