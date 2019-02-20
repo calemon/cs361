@@ -7,7 +7,11 @@ Deadlocks will typically occur in OS
 Forked processes share physical memory
 - All child processes can read as often as they want without worry of it changing
 
+![createjoinprocesses](Images/CreateJoinProcesses.jpg)
+
 Copy-On-Write (COW): Child process will still have access to the shared memory of all other child processes, but will also have it's own allocated memory
+
+![SharedMemory](Images/shared-memory.png)
 
 SHM (Shared Memory): Allocated memory that everything shares
 
