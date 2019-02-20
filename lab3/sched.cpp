@@ -28,15 +28,15 @@ static void print_process(PROCESS *proc);
 static void print_process_list();
 
 #if defined(STUDENT)
-static void proc_10_secs_run() {
-	uint32_t END_AFTER = get_timer_lo() / TIMER_FREQ + 10;
-	write_stringln("\r\nI do nothing but quit after 10 seconds.\r\n");
+static void proc_5_secs_run() {
+	uint32_t END_AFTER = get_timer_lo() / TIMER_FREQ + 5;
+	write_stringln("\r\nI do nothing but quit after 5 seconds.\r\n");
 	while (get_timer_lo() / TIMER_FREQ < END_AFTER);
 }
 
-static void proc_10_secs_sleep() {
-	write_stringln("\r\nI'm going to sleep for 10 seconds, then quitting.\r\n");
-	sleep_process(get_current(), 10);
+static void proc_5_secs_sleep() {
+	write_stringln("\r\nI'm going to sleep for 5 seconds, then quitting.\r\n");
+	sleep_process(get_current(), 5);
 	wait();
 }
 
@@ -50,13 +50,21 @@ static void proc_infinite_loop() {
 void add_new_process(int padd) {
 	switch (padd) {
 		case 1:
-			new_process(proc_10_secs_run, "10 second run process", 10);
+			new_process(proc_5_secs_run, "5 sec proc, priority 10", 10); //Never run
 			break;
 		case 2:
-			new_process(proc_infinite_loop, "Infinite loop process", 10);
+			new_process(proc_5_secs_run, "5 sec proc, priority 0", 0); // Will run with init and idle
 			break;
+		case 3:
+			new_process(proc_5_secs_run, "10 sec proc, priority -10", -10); // Run until finish
+			break;
+		/*
+		case 4:
+			new_process(proc_infinite_loop, "Infinite loop process", 10); //Never run
+			break;
+		*/
 		default:
-			new_process(proc_10_secs_sleep, "10 second sleep process", 10);
+			new_process(proc_5_secs_sleep, "10 second sleep process", 10); // Never run
 			break;
 	}
 }
@@ -95,7 +103,7 @@ void new_process(void (*func)(), const char *name, int32_t priority) {
 
 void del_process(PROCESS *p) {
 	p->state = PROCESS_STATE::DEAD;
-	p->pid = 0;
+	p->pid = LOWEST_PRIORITY + 1;
 	clear_string(p->name, 32);
 }
 
@@ -143,41 +151,58 @@ static PROCESS *round_robin_sched(PROCESS *current){
 			i = -1;
 			continue;
 		}
-		/* All processes were checked, so return init */
-		if(i == (int32_t) current->pid - 1){
-			return &process_list[0];
-		}
 
+		/* All processes were checked, so return current */
+		if(i == (int32_t) current->pid - 1) return current;
 		/* Check if process at index i is available as the next process */
-		if(temp->state == PROCESS_STATE::RUNNING){
-			return temp;
-		}
+		if(temp->state == PROCESS_STATE::RUNNING) return temp;
 	}
 }
 
 static PROCESS *multilevel_sched(PROCESS *current){
-	/*
-	Start at highest priority, look for any processes in the highest priority and return if one exists.
-	Else, continue to next lower priority, search for process, and repeat until process is found. If not process
-	is found by lowest priority, then return init (process_list[0])
-	*/
-	PROCESS *temp;
-	for(int32_t current_priority = HIGHEST_PRIORITY; current_priority <= LOWEST_PRIORITY; current_priority++){
-		for(int32_t j = current->pid; j <= (int32_t) MAX_PROCESSES; j++){
-			/* Reached end of process_list, reset j to 0 */
-			if(j == MAX_PROCESSES){
-				j = -1;
-				continue;
-			}
-			/* Checked all processes, return init */
-			if(j == (int32_t) current->pid - 1) return &process_list[0];
+	PROCESS *temp, *highest_process;
+	int32_t highest_level;
+	int32_t same_priority_index = -1;
+	char str[32];
 
-			temp = &process_list[j];
-			/* temp's priority is not the same as the current priority */
-			if(temp->priority != current_priority) continue;
-			if(temp->state == PROCESS_STATE::RUNNING) return temp;
-		}
+	if(current->state == PROCESS_STATE::RUNNING){
+		highest_process = current;
+		highest_level = current->priority;
+	} else {
+		highest_process = &process_list[0];
+		highest_level = highest_process->priority;
 	}
+
+	for(int32_t i = current->pid; i <= MAX_PROCESSES; i++){
+		/* Reached end of process_list, reset i to beginning */
+		if(i == MAX_PROCESSES){
+			i = -1;
+			continue;
+		}
+		/* Checked all of process_list, back at current_process so return it */
+		if(i == current->pid - 1) break;
+
+		temp = &process_list[i];
+		if(temp->state != PROCESS_STATE::RUNNING) continue;
+		if(temp->priority <= highest_level){
+			highest_process = temp;
+			highest_level = temp->priority;
+		} 
+		/* May need below else/if if the next process of same priority has to be the next consecutive process.
+		Currently, with only the above if statement, if the current process is at index 4 and there's two processes
+		of same priority at indices 6 and 1, then 1 will be scheduled next. If the below if/else statement is included,
+		then 6 would be scheduled. */
+		/*else if(temp->priority == highest_level && same_priority_index == -1){
+			same_priority_index = i;
+		}*/
+	}
+
+	return highest_process;
+	/* NEED FOLLOWING IF THE ABOVE COMMENTED-OUT else/if IS INCLUDED */
+	/*
+	if(same_priority_index != -1) return &process_list[same_priority_index];
+	else return highest_process;
+	*/
 }
 
 static void clear_string(char *string, int str_length){
