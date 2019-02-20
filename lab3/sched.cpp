@@ -99,12 +99,21 @@ void new_process(void (*func)(), const char *name, int32_t priority) {
 	new_proc->start_time = get_timer_lo() / TIMER_FREQ;
 	new_proc->regs[REGISTERS::SP] = (uint32_t) &stack_space[STACK_ALLOC * new_proc->pid - 1];
 	new_proc->regs[REGISTERS::RA] = (uint32_t) recover;
+	new_proc->runtime = 0;
+	new_proc->num_switches = 0;
+	new_proc->quantum_multiplier = 0;
 }
 
 void del_process(PROCESS *p) {
 	p->state = PROCESS_STATE::DEAD;
 	p->pid = LOWEST_PRIORITY + 1;
+	p->runtime = 0;
+	p->start_time = 0;
+	p->num_switches = 0;
+	p->sleep_time = 0;
+	p->quantum_multiplier = 0;
 	clear_string(p->name, 32);
+
 }
 
 void sleep_process(PROCESS *p, uint32_t sleep_time) {
@@ -161,33 +170,23 @@ static PROCESS *round_robin_sched(PROCESS *current){
 
 static PROCESS *multilevel_sched(PROCESS *current){
 	PROCESS *temp, *highest_process;
-	int32_t highest_level;
-	int32_t same_priority_index = -1;
-	char str[32];
+	//int32_t same_priority_index = -1;
 
-	if(current->state == PROCESS_STATE::RUNNING){
-		highest_process = current;
-		highest_level = current->priority;
-	} else {
-		highest_process = &process_list[0];
-		highest_level = highest_process->priority;
-	}
+	if(current->state == PROCESS_STATE::RUNNING) highest_process = current;
+	else highest_process = &process_list[0];
 
-	for(int32_t i = current->pid; i <= MAX_PROCESSES; i++){
+	for(int32_t i = current->pid; i <= (int32_t) MAX_PROCESSES; i++){
 		/* Reached end of process_list, reset i to beginning */
 		if(i == MAX_PROCESSES){
 			i = -1;
 			continue;
 		}
 		/* Checked all of process_list, back at current_process so return it */
-		if(i == current->pid - 1) break;
+		if(i == (int32_t) current->pid - 1) break;
 
 		temp = &process_list[i];
 		if(temp->state != PROCESS_STATE::RUNNING) continue;
-		if(temp->priority <= highest_level){
-			highest_process = temp;
-			highest_level = temp->priority;
-		} 
+		if(temp->priority <= highest_process->priority) highest_process = temp;
 		/* May need below else/if if the next process of same priority has to be the next consecutive process.
 		Currently, with only the above if statement, if the current process is at index 4 and there's two processes
 		of same priority at indices 6 and 1, then 1 will be scheduled next. If the below if/else statement is included,
