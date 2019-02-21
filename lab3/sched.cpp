@@ -50,21 +50,19 @@ static void proc_infinite_loop() {
 void add_new_process(int padd) {
 	switch (padd) {
 		case 1:
-			new_process(proc_5_secs_run, "5 sec proc, priority 10", 10); //Never run
+			new_process(proc_5_secs_run, "5 sec proc, priority 10", 10);
 			break;
 		case 2:
-			new_process(proc_5_secs_run, "5 sec proc, priority 0", 0); // Will run with init and idle
+			new_process(proc_5_secs_run, "5 sec proc, priority 0", 0);
 			break;
 		case 3:
-			new_process(proc_5_secs_run, "10 sec proc, priority -10", -10); // Run until finish
+			new_process(proc_5_secs_run, "5 sec proc, priority -10", -10);
 			break;
-		/*
 		case 4:
-			new_process(proc_infinite_loop, "Infinite loop process", 10); //Never run
+			new_process(proc_infinite_loop, "Infinite loop process", 10);
 			break;
-		*/
 		default:
-			new_process(proc_5_secs_sleep, "10 second sleep process", 10); // Never run
+			new_process(proc_5_secs_sleep, "5 second sleep process", 10);
 			break;
 	}
 }
@@ -91,6 +89,7 @@ void new_process(void (*func)(), const char *name, int32_t priority) {
 	else if(priority < HIGHEST_PRIORITY) priority = HIGHEST_PRIORITY;
 
 	/* Fill in new process information */
+	new_proc = &process_list[available_index];
 	strcpy(new_proc->name, name);
 	new_proc->state = PROCESS_STATE::RUNNING;
 	new_proc->pid = available_index + 1;
@@ -106,19 +105,22 @@ void new_process(void (*func)(), const char *name, int32_t priority) {
 
 void del_process(PROCESS *p) {
 	p->state = PROCESS_STATE::DEAD;
-	p->pid = LOWEST_PRIORITY + 1;
 	p->runtime = 0;
 	p->start_time = 0;
 	p->num_switches = 0;
 	p->sleep_time = 0;
 	p->quantum_multiplier = 0;
 	clear_string(p->name, 32);
+	/* If the scheduling algorithm is currently MLF, then reset the priority to HIGHEST_PRIORITY */
+	if(scheduling_algorithm == SCHEDULE_ALGORITHM::SCHED_MLF) p->priority = HIGHEST_PRIORITY;
 
 }
 
 void sleep_process(PROCESS *p, uint32_t sleep_time) {
 	p->state = PROCESS_STATE::SLEEPING;
 	p->sleep_time = get_timer_lo() / TIMER_FREQ + sleep_time;
+
+	if(scheduling_algorithm == SCHEDULE_ALGORITHM::SCHED_MLF) p->priority = HIGHEST_PRIORITY;
 }
 
 PROCESS *schedule(PROCESS *current) {
@@ -141,9 +143,9 @@ PROCESS *schedule(PROCESS *current) {
 		case SCHEDULE_ALGORITHM::SCHED_ML:
 			return multilevel_sched(current);
 		case SCHEDULE_ALGORITHM::SCHED_MLF:
-			break;
+			return multilevel_sched(current);
 		default:
-			break;
+			return round_robin_sched(current);
 	}
 
 }
@@ -162,7 +164,10 @@ static PROCESS *round_robin_sched(PROCESS *current){
 		}
 
 		/* All processes were checked, so return current */
-		if(i == (int32_t) current->pid - 1) return current;
+		if(i == (int32_t) current->pid - 1){
+			if(current->state != PROCESS_STATE::RUNNING) return &process_list[0];
+			else return current;
+		}
 		/* Check if process at index i is available as the next process */
 		if(temp->state == PROCESS_STATE::RUNNING) return temp;
 	}
@@ -196,6 +201,15 @@ static PROCESS *multilevel_sched(PROCESS *current){
 		}*/
 	}
 
+	/* If using MLF, need to adjust priority and multiplier */
+	if(scheduling_algorithm == SCHEDULE_ALGORITHM::SCHED_MLF){
+		/* Decrement current's priority */
+		if(current->priority < LOWEST_PRIORITY) current->priority += 1;
+		else current->priority = LOWEST_PRIORITY;
+
+		current->quantum_multiplier = current->priority + 10;
+	}
+
 	return highest_process;
 	/* NEED FOLLOWING IF THE ABOVE COMMENTED-OUT else/if IS INCLUDED */
 	/*
@@ -203,6 +217,32 @@ static PROCESS *multilevel_sched(PROCESS *current){
 	else return highest_process;
 	*/
 }
+
+/*
+static PROCESS *multilevel_feedback_sched(PROCESS *current){
+	PROCESS *temp, *highest_process;
+
+	if(current->state == PROCESS_STATE::RUNNING) highest_process = current;
+	else highest_process = &process_list[0];
+
+	for(int32_t i = current->pid; i <= (int32_t) MAX_PROCESSES; i++){
+		if(i == MAX_PROCESSES){
+			i = -1;
+			continue;
+		}
+		if(i == (int32_t) current->pid - 1) break;
+
+		temp = &process_list[i];
+		if(temp->state != PROCESS_STATE::RUNNING) continue;
+		if(temp->priority <= highest_process->priority) highest_process = temp;
+	}
+
+	if(current->priority < LOWEST_PRIORITY) current->priority += 1;
+	current->quantum_multiplier = current->priority + 10;
+
+	return highest_process;
+}
+*/
 
 static void clear_string(char *string, int str_length){
 	for(int32_t i = 0; i < str_length; i++) string[i] = '\0';
