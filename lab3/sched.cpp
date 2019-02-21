@@ -150,7 +150,11 @@ PROCESS *schedule(PROCESS *current) {
 
 }
 
-/* Custom functions */
+/* Round robin algorithm: All processes are equal, priority and multiplier do not matter.
+* Round robin will begin looking for the next available process by going through process_list
+* starting at the current processes's index in the process_list and just going through the list
+* iteratively.
+*/
 static PROCESS *round_robin_sched(PROCESS *current){
 	PROCESS *temp;
 	/* Look for next process starting at process at index current->pid */
@@ -173,6 +177,11 @@ static PROCESS *round_robin_sched(PROCESS *current){
 	}
 }
 
+/* ML and MLF: ML will cause starvation as only the higher priority processes will run. So,
+* any process above init's priority will cause program to freeze, same goes for any other process
+* MLF will solve starvation because after all processes run, it's priority will decrement by 1 and
+* multiplier will increase.
+*/
 static PROCESS *multilevel_sched(PROCESS *current){
 	PROCESS *temp, *highest_process;
 	//int32_t same_priority_index = -1;
