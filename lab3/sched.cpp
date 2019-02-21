@@ -24,8 +24,6 @@ const int32_t LOWEST_PRIORITY = 10;
 static PROCESS *round_robin_sched(PROCESS *current);
 static PROCESS *multilevel_sched(PROCESS *current);
 static void clear_string(char *string, int str_length);
-static void print_process(PROCESS *proc);
-static void print_process_list();
 
 #if defined(STUDENT)
 static void proc_5_secs_run() {
@@ -59,7 +57,7 @@ void add_new_process(int padd) {
 			new_process(proc_5_secs_run, "5 sec proc, priority -10", -10);
 			break;
 		case 4:
-			new_process(proc_infinite_loop, "Infinite loop process", 10);
+			new_process(proc_infinite_loop, "Infinite loop process", -10);
 			break;
 		default:
 			new_process(proc_5_secs_sleep, "5 second sleep process", 10);
@@ -82,6 +80,7 @@ void new_process(void (*func)(), const char *name, int32_t priority) {
 		found_dead_process = true;
 		available_index = i;
 	}
+	/* No available process found so return */
 	if(found_dead_process != true) return;
 	
 	/* Clamp priority number if above lowest priority (10) or below highest priority (-10) */
@@ -104,6 +103,7 @@ void new_process(void (*func)(), const char *name, int32_t priority) {
 }
 
 void del_process(PROCESS *p) {
+	/* Set the process to dead and reset all of it's data */
 	p->state = PROCESS_STATE::DEAD;
 	p->runtime = 0;
 	p->start_time = 0;
@@ -111,15 +111,17 @@ void del_process(PROCESS *p) {
 	p->sleep_time = 0;
 	p->quantum_multiplier = 0;
 	clear_string(p->name, 32);
+
 	/* If the scheduling algorithm is currently MLF, then reset the priority to HIGHEST_PRIORITY */
 	if(scheduling_algorithm == SCHEDULE_ALGORITHM::SCHED_MLF) p->priority = HIGHEST_PRIORITY;
-
 }
 
 void sleep_process(PROCESS *p, uint32_t sleep_time) {
+	/* Set to sleeping and set the sleep time to current + sleep_time (in seconds) */
 	p->state = PROCESS_STATE::SLEEPING;
 	p->sleep_time = get_timer_lo() / TIMER_FREQ + sleep_time;
 
+	/* If in MLF mode, every time a process sleeps then it needs to be reset to the highest priority */
 	if(scheduling_algorithm == SCHEDULE_ALGORITHM::SCHED_MLF) p->priority = HIGHEST_PRIORITY;
 }
 
@@ -137,6 +139,7 @@ PROCESS *schedule(PROCESS *current) {
 		}
 	}
 
+	/* Choose the scheduling algorithm, default is RR; ML and MLF share the same function */
 	switch (scheduling_algorithm) {
 		case SCHEDULE_ALGORITHM::SCHED_RR:
 			return round_robin_sched(current);
@@ -184,8 +187,8 @@ static PROCESS *round_robin_sched(PROCESS *current){
 */
 static PROCESS *multilevel_sched(PROCESS *current){
 	PROCESS *temp, *highest_process;
-	//int32_t same_priority_index = -1;
 
+	/* If current isn't dead, then use it as the highest process, else use the init process */
 	if(current->state == PROCESS_STATE::RUNNING) highest_process = current;
 	else highest_process = &process_list[0];
 
@@ -199,90 +202,26 @@ static PROCESS *multilevel_sched(PROCESS *current){
 		if(i == (int32_t) current->pid - 1) break;
 
 		temp = &process_list[i];
+		/* Skip if temp isn't currently running */
 		if(temp->state != PROCESS_STATE::RUNNING) continue;
+		/* Set highest_process to temp because it is the newest highest_process */
 		if(temp->priority <= highest_process->priority) highest_process = temp;
-		/* May need below else/if if the next process of same priority has to be the next consecutive process.
-		Currently, with only the above if statement, if the current process is at index 4 and there's two processes
-		of same priority at indices 6 and 1, then 1 will be scheduled next. If the below if/else statement is included,
-		then 6 would be scheduled. */
-		/*else if(temp->priority == highest_level && same_priority_index == -1){
-			same_priority_index = i;
-		}*/
 	}
 
-	/* If using MLF, need to adjust priority and multiplier */
+	/* If using MLF, need to adjust priority and multiplier of the current process before returning the next */
 	if(scheduling_algorithm == SCHEDULE_ALGORITHM::SCHED_MLF){
 		/* Decrement current's priority */
 		if(current->priority < LOWEST_PRIORITY) current->priority += 1;
 		else current->priority = LOWEST_PRIORITY;
 
+		/* Set the new multiplier for current so it will run longer the next time it is ran */
 		current->quantum_multiplier = current->priority + 10;
 	}
 
 	return highest_process;
-	/* NEED FOLLOWING IF THE ABOVE COMMENTED-OUT else/if IS INCLUDED */
-	/*
-	if(same_priority_index != -1) return &process_list[same_priority_index];
-	else return highest_process;
-	*/
 }
 
+/* Used for clearing out any strings; Null characters are put in all indices */
 static void clear_string(char *string, int str_length){
 	for(int32_t i = 0; i < str_length; i++) string[i] = '\0';
-}
-
-static void print_process(PROCESS *proc){
-	char str[32];
-	
-	write_string("Process \'");
-	write_string(proc->name);
-	write_string("\' (PID: ");
-	to_string(str, proc->pid);
-	write_string(str);
-	clear_string(str, 32);
-	write_stringln(")");
-
-	write_string("  Process State: ");
-	switch(proc->state){
-		case PROCESS_STATE::DEAD:
-			write_stringln("DEAD");
-			break;
-		case PROCESS_STATE::SLEEPING:
-			write_stringln("SLEEPING");
-			break;
-		case PROCESS_STATE::RUNNING:
-			write_stringln("RUNNING");
-			break;
-		default:
-			write_stringln("Not specified");
-			break;
-	}
-
-	to_string(str, proc->priority);
-	write_string("  Priority: ");
-	write_stringln(str);
-	clear_string(str, 32);
-
-	to_string(str, proc->num_switches);
-	write_string("  Number of switches: ");
-	write_stringln(str);
-	clear_string(str, 32);
-
-	to_string(str, proc->start_time);
-	write_string("  Start Time: ");
-	write_stringln(str);
-	clear_string(str, 32);
-
-	to_string(str, proc->runtime);
-	write_string("  Runtime: ");
-	write_stringln(str);
-	clear_string(str, 32);
-}
-
-static void print_process_list(){
-	write_string("\n");
-	write_stringln("PROCESS LIST");
-	write_stringln("=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=");
-	for(uint32_t i = 0; i < MAX_PROCESSES; i++) print_process(&process_list[i]);
-	write_string("\n");
 }
