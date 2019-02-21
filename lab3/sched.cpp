@@ -218,32 +218,6 @@ static PROCESS *multilevel_sched(PROCESS *current){
 	*/
 }
 
-/*
-static PROCESS *multilevel_feedback_sched(PROCESS *current){
-	PROCESS *temp, *highest_process;
-
-	if(current->state == PROCESS_STATE::RUNNING) highest_process = current;
-	else highest_process = &process_list[0];
-
-	for(int32_t i = current->pid; i <= (int32_t) MAX_PROCESSES; i++){
-		if(i == MAX_PROCESSES){
-			i = -1;
-			continue;
-		}
-		if(i == (int32_t) current->pid - 1) break;
-
-		temp = &process_list[i];
-		if(temp->state != PROCESS_STATE::RUNNING) continue;
-		if(temp->priority <= highest_process->priority) highest_process = temp;
-	}
-
-	if(current->priority < LOWEST_PRIORITY) current->priority += 1;
-	current->quantum_multiplier = current->priority + 10;
-
-	return highest_process;
-}
-*/
-
 static void clear_string(char *string, int str_length){
 	for(int32_t i = 0; i < str_length; i++) string[i] = '\0';
 }
