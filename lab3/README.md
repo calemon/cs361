@@ -136,11 +136,13 @@ This function puts the process pointed to by p to sleep until sleep_time seconds
 ```cpp
 PROCESS *schedule(PROCESS *current);
 ```
-This function invokes your scheduler.
+This function invokes your scheduler. When the OS boots, the round robin scheduling algorithm is selected.
 
 The scheduler will first awaken any sleeping process who has reached their sleep_time value.
 
 Then, this function must determine the scheduling algorithm. Finally, it must properly choose and return a RUNNING process.
+
+(For MLF only) Reset the priority and quantum multiplier of any process put to sleep (see MLF below).
 
 ## Examples
 ```
@@ -201,11 +203,11 @@ Notice that the init process above has a quantum multiplier of 3, and that it ap
 
 ## Multilevel and Multilevel Feedback
 
-You will need to implement priorities for ML and MLF scheduling algorithms. Set the quantum multiplier to priority + 10. Whenever a process sleeps or is deleted, its quantum multiplier is reset to 0 by resetting the priority to -10.
+You will need to implement priorities for ML and MLF scheduling algorithms.
+
+For MLF: set the quantum multiplier to priority + 10. Whenever a process sleeps or is deleted, its quantum multiplier is reset to 0 by resetting the priority to -10.
 
 You may implement wait queues and run queues, but this is not required for full credit.
-
-You may need to modify init's priority and quantum multiplier to make sure it always runs.
 
 ## Restrictions
 
