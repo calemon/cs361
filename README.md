@@ -11,10 +11,10 @@
 - [Lab 4](https://github.com/calemon/cs361/tree/master/lab4): You will be writing a few functions required to implement the Sv32 memory management unit. This time, MZOS has both kernel and user space. Therefore, it is required that your code map/unmap and switch MMU pages to make sure that all user space lives in user space, and that all kernel space lives in kernel space.
 
 # Powerpoints
-- [Operating Systems](class_notes/COSS361 - Operating Systems)
-- [Booting](https://github.com/calemon/cs361/blob/master/class_notes/COSC361%20-%20Booting.pdf)
-- [Drivers and Hardware](https://github.com/calemon/cs361/blob/master/class_notes/COSC361%20-%20Drivers%20and%20Hardware.pdf)
-- [System Calls](https://github.com/calemon/cs361/blob/master/class_notes/COSC361%20-%20System%20Calls.pdf)
-- [Processes](https://github.com/calemon/cs361/blob/master/class_notes/COSC361%20-%20Processes.pdf)
-- [Scheduling](https://github.com/calemon/cs361/blob/master/class_notes/COSC361%20-%20Scheduling.pdf)
-- [Concurrency]
+- [Operating Systems](class_notes/COSC361-Operating_Systems.pdf)
+- [Booting](class_notes/COSC361-Booting.pdf)
+- [Drivers and Hardware](class_notes/COSC361-Drivers_and_Hardware.pdf)
+- [System Calls](class_notes/COSC361-System_Calls.pdf)
+- [Processes](class_notes/COSC361-Processes.pdf)
+- [Scheduling](class_notes/COSC361-Scheduling.pdf)
+- [Concurrency](class_notes/COSC361-Concurrency.pdf)
