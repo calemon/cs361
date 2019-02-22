@@ -52,6 +52,10 @@ Rules of locking:
 Rules of ordering:
 - Want to maximize readers; Get as many readers done as possible
   - Writing takes more work, so reading will be maximized
+
+# Dining Philosophers
+
+# BKL (Big Kernel Lock)
 # Clicker Questions
 1) How many bytes is the MTVEC (Machine trap vector) aligned by? 4 bytes
 2) Which register stores what instruction we return to when an instruction is interrupted? MEPC
