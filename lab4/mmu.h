@@ -22,8 +22,7 @@ struct PROCESS {
         uint32_t state;
         uint8_t  mode;
         uint32_t priv;
-        uint32_t mmu_table_physical;
-        uint32_t mmu_table_virtual;
+        uint32_t mmu_table;
 };
 
 enum ProcessMode
@@ -43,7 +42,7 @@ enum Syscallno
 };
 
 const uint32_t MAX_PROCESSES = 15;
-const uint32_t MMU_TABLE_SIZE = 1024 * MAX_PROCESSES * 3;
+const uint32_t MMU_TABLE_SIZE = 1024 * MAX_PROCESSES * 10;
 
 extern "C" {
         //Write the following functions in your .cpp file
@@ -58,6 +57,11 @@ extern "C" {
         uint32_t get_satp();
         void set_satp(uint32_t value);
         void ecall(Syscallno syscallno, uint32_t param);
+	// Debugging functions
+	void write_string(const char *str);
+	void write_stringln(const char *str);
+	void hex_to_string(char *dest, int src, bool prepend_0x=true);
+	void strcpy(char *dest, const char *src);
 
         //mode = 0 (USER) or 1 (SUPERVISOR) or 3 (MACHINE)
         void new_process(void (*program)(), uint32_t priority, uint32_t quantum_multiplier, ProcessMode mode);
