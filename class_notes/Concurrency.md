@@ -53,10 +53,18 @@ Rules of ordering:
 - Want to maximize readers; Get as many readers done as possible
   - Writing takes more work, so reading will be maximized
 
-# Dining Philosophers
+**INSERT NOTES FROM FRIDAY**
 
-# BKL (Big Kernel Lock)
-# Clicker Questions
+RCU (Read-Copy-Update)
+
+- Prevents user from locking
+
+**INSERT GRAPH FROM CLASS**
+
+## Dining Philosophers
+
+## BKL (Big Kernel Lock)
+## Clicker Questions
 1) How many bytes is the MTVEC (Machine trap vector) aligned by? 4 bytes
 2) Which register stores what instruction we return to when an instruction is interrupted? MEPC
 3) Where is the fetch instruction stored? RAM
