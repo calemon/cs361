@@ -18,6 +18,7 @@ extern uint32_t MMU_TABLE[MMU_TABLE_SIZE];
 
 const uint32_t ALIGN_TO = 4096;
 const uint32_t SP_REG = 2;
+const uint32_t TABLE_SIZE = 4096;
 
 char str[64];
 
@@ -38,52 +39,58 @@ void mmu_enable(PROCESS *p){
 
     /* Get satp_reg, set lower 21 bits to p->mmu_table and set the mode to 1 */
     satp_reg = get_satp();
-    satp_reg |= (p->mmu_table & bit_mask(0,21));
+    satp_reg |= (p->mmu_table >> 12);
     set_bit(&satp_reg, 31);
     set_satp(satp_reg);
 }
 
 void mmu_map(PROCESS *p){
-    uint32_t *space, *stack_reg, *program;
-    uint32_t aligned_space, mask, vpn1, vpn0;
+    /*
+    1) Map Stack
+        1) Find the root and apply it properly
+        2) Add VPN[1] to root to get the 4 byte entry
+            - It has PPN[1], PPN[0], URWX and V bits
+            - PPN[1] will be the same as VPN[1]/VPN[0]
+        3) The value at root + VPN[1] will be the memory address of the second-level (second_root) page table
+        4) Add VPN[0] to second_root (second_root + VPN[0]) to get to entry
+    2) Map Program
+        Same as stack
+    */
+    uint32_t *space, *aligned_space, *stack_reg, *lvl1_ptr, *lvl2_ptr;
+    uint32_t root, mask, vpn1, vpn0, lvl1_pte = 0;
     
-    space = &MMU_TABLE[1024 * p->pid * 10];
-    /* Aligned points to root page table entry */
-    aligned_space = (uint32_t) (space + (ALIGN_TO - 1)) & -ALIGN_TO;
-    write_string("space = ");
-    hex_to_string(str, (uint32_t) space);
-    write_stringln(str);
-    write_string("aligned_space = ");
+    /* Find process's root space then align it */
+    root = (uint32_t) MMU_TABLE + (1024 * 10 * (p->pid-1))
+    space = MMU_TABLE + (1024 * (p->pid - 1) * 10);
+    aligned_space = (uint32_t *) (((uint32_t) space + (ALIGN_TO - 1)) & -ALIGN_TO);
+    p->mmu_table = (uint32_t) aligned_space;
+    write_string("aligned_space: ");
     hex_to_string(str, (uint32_t) aligned_space);
     write_stringln(str);
 
-    vpn1 = aligned_space >> 22 & bit_mask(0,10);
-    write_string("VPN[1] = ");
-    hex_to_string(str, vpn1);
+    /* Decompose program pointer */
+    vpn1 = (((uint32_t) p->program) >> 22) & 0x3ff;
+    vpn0 = (((uint32_t) p->program) >> 12) & 0x3ff;
+    lvl1_ptr = aligned_space + vpn1;
+    write_string("lvl1_ptr address: ");
+    hex_to_string(str, (uint32_t) lvl1_ptr);
+    write_stringln(str);
+    write_string("lvl1_ptr value: ");
+    hex_to_string(str, *lvl1_ptr);
+    write_stringln(str);
+    write_string("aligned+4096+TABLE_SIZE & 0x000: ");
+    lvl2_ptr = (uint32_t *) (((uint32_t) (aligned_space + 4096 + TABLE_SIZE)) & ~(0xfff));
+    hex_to_string(str, (uint32_t) lvl2_ptr);
+    write_stringln(str);
+    lvl1_pte = ((uint32_t) lvl2_ptr) | 0x000000001;
+    *lvl1_ptr = lvl1_pte;
+    write_string("level 1 pte: ");
+    hex_to_string(str, lvl1_pte);
     write_stringln(str);
 
-    vpn0 = (aligned_space >> 12) & bit_mask(0, 10);
-    write_string("VPN[0] = ");
-    hex_to_string(str, vpn0);
+    write_string("MMU_TABLE[VPN1]: ");
+    hex_to_string(str, aligned_space[vpn1]);
     write_stringln(str);
-
-    p->mmu_table = aligned_space;
-
-
-    /*
-    write_string("p->mmu_table = ");
-    hex_to_string(str, p->mmu_table);
-    write_stringln(str);
-
-    stack_reg = &p->regs[SP_REG];
-    write_string("stack_reg address = ");
-    hex_to_string(str, (uint32_t) stack_reg);
-    write_stringln(str);
-    write_string("program address = ");
-    hex_to_string(str, (uint32_t) p->program);
-    write_stringln(str);
-    */
-    
 }
 
 void mmu_unmap(PROCESS *p){
@@ -151,45 +158,4 @@ static uint32_t bit_mask(int bit_start, int bit_end){
     mask = (((1 << (bit_end - bit_start)) - 1) << bit_start) | (1 << bit_end);
 
     return mask;
-}
-
-static void to_string(char *dest, uint32_t value){
-    int i = 0, length;
-    char temp;
-    bool is_negative = false;
-
-    /* If the value is negative, set the flag and make value positive */
-    if(value < 0){
-        is_negative = true;
-        value *= -1;
-    } else if(value == 0){
-        dest[i++] = '0';
-    }
-    
-    /* Get each digit by taking the mod 10 of the value as a digit then divide value by 10 */
-    while(value > 0){
-        dest[i++] = (value % 10) + '0';
-        value /= 10;
-    }
-
-    /* The above algorithm produces the number in reverse order, so reverse again to correct the order */
-    length = i;
-    for(int j = 0; j < i; j++, i--){
-        temp = dest[j];
-        dest[j] = dest[i-1];
-        dest[i-1] = temp;
-    }
-
-    /* If the value was originally negative, then shift each character
-     to the right one and set the first character to '-' */
-    if(is_negative){
-        for(int j = length; j >= 0; j--){
-            dest[j+1] = dest[j];
-        }
-        dest[0] = '-';
-        length++;
-    }
-
-    dest[length] = '\0';
-    return;
 }
