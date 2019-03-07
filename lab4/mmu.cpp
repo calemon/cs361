@@ -9,13 +9,12 @@
 /* Custom functions */
 static uint32_t get_pn1(uint32_t value);
 static uint32_t get_pn0(uint32_t value);
+static uint32_t create_pte(uint32_t ppn1, uint32_t ppn0, bool is_program, uint32_t mode, bool is_level0);
 static void set_bit(uint32_t *value, uint32_t bit_index);
 static void clear_bit(uint32_t *value, uint32_t bit_index);
-static void clear_string(char *string, uint32_t length);
-static void write_uint(uint32_t value);
-static uint32_t bit_mask(int bit_start, int bit_end);
-static void to_string(char *dest, uint32_t value);
+static bool test_bit(const uint32_t *bitset, int bit_index);
 static void print_line_and_hex(char *pre, uint32_t value, bool newline = true);
+static void print_process_table(PROCESS *p);
 
 extern uint32_t MMU_TABLE[MMU_TABLE_SIZE];
 
@@ -58,14 +57,9 @@ void mmu_map(PROCESS *p){
         4) Add VPN[0] to second_root (second_root + VPN[0]) to get to entry
     2) Map Program
         Same as stack
-    */
-    /*
+
     if mapping program or stack second, check if for root + vpn[1] if the valid bit is 1, if it is follow it
     Put in level 0 pte the program >> 2?
-    program = p->*program() & 0xfff;
-    stack_ptr = p->regs[2] & 0xfff;
-    program_end = (program + 4095 + 4096) & ~(0xfff)
-    stack_end = (stack + 4095 + 8192) & ~(0xfff)
 
     while(){
         level 1 stuff
@@ -87,68 +81,49 @@ void mmu_map(PROCESS *p){
     stack = (p->regs[SP_REG]) & ~(0xfff); // NEED TO FIX
     stack_end = (stack + (ALIGN_TO - 1) + (2 * ALIGN_TO)) & ~(0xfff);
     
-    /* Find process's root space then align it */
+    /* Find process's root space then align it; set p->mmu_table to root */
     root = MMU_TABLE + (1024 * (p->pid - 1) * 10);
-    print_line_and_hex("root before align: ", (uint32_t) root);
-
     root = (uint32_t *) (((uint32_t) root + (ALIGN_TO - 1)) & -ALIGN_TO);
-    print_line_and_hex(" root after align: ", (uint32_t) root);
-
     p->mmu_table = (uint32_t) root;
 
+    uint32_t p_vpn1 = get_pn1(program);
+    uint32_t p_vpn0 = get_pn0(program);
     print_line_and_hex("program: ", program);
-
-    uint32_t vpn1 = get_pn1(program);
-    uint32_t vpn0 = get_pn0(program);
-    print_line_and_hex("p_vpn1: ", vpn1);
-    print_line_and_hex("p_vpn0: ", vpn0);
+    print_line_and_hex("p_vpn1: ", p_vpn1);
+    print_line_and_hex("p_vpn0: ", p_vpn0);
+    uint32_t s_vpn1 = get_pn1(stack);
+    uint32_t s_vpn0 = get_pn0(stack);
+    print_line_and_hex("stack: ", stack);
+    print_line_and_hex("s_vpn1: ", s_vpn1);
+    print_line_and_hex("s_vpn0: ", s_vpn0);
 
     uint32_t *level0_address = root + 8192;
     print_line_and_hex("level0_address: ", (uint32_t) level0_address);
 
     /* Adjust 34-bit physical address to 32-bit PTE */
-    root[vpn1] = ((uint32_t) level0_address >> 2) | 1;
-    if(p->mode == ProcessMode::USER) root[vpn1] |= (1 << 4);
-    print_line_and_hex("root[vpn1]: ", root[vpn1]);
+    root[p_vpn1] = create_pte(get_pn1((uint32_t) level0_address), get_pn0((uint32_t) level0_address), true, p->mode, false);
+    print_line_and_hex("root[p_vpn1]: ", root[p_vpn1]);
 
     while(program < program_end){
-        level0_address[vpn0] = 5;
+        level0_address[p_vpn0] = create_pte(p_vpn1, p_vpn0, true, p->mode, true);
+        print_line_and_hex("level0_address[p_vpn0]: ", level0_address[p_vpn0]);
         program += 4096;
-        vpn0 += 1;
+        p_vpn0 += 1;
     }
 
+    /* Check if vpn1 was the same for both the program and stack, if it wasn't then create a new PTE */
+    if(test_bit(&root[s_vpn1], 0) == 0){
+        write_stringln("have to create new entry for level 1");
+        root[s_vpn1] = create_pte(get_pn1((uint32_t) level0_address), get_pn0((uint32_t) level0_address), false, p->mode, false);
+    }
 
-    /*
-    space = MMU_TABLE + (1024 * (p->pid - 1) * 10);
-    aligned_space = (uint32_t *) (((uint32_t) space + (ALIGN_TO - 1)) & -ALIGN_TO);
-    p->mmu_table = (uint32_t) aligned_space;
-    write_string("aligned_space: ");
-    hex_to_string(str, (uint32_t) aligned_space);
-    write_stringln(str);
-
-    vpn1 = (((uint32_t) p->program) >> 22) & 0x3ff;
-    vpn0 = (((uint32_t) p->program) >> 12) & 0x3ff;
-    lvl1_ptr = aligned_space + vpn1;
-    write_string("lvl1_ptr address: ");
-    hex_to_string(str, (uint32_t) lvl1_ptr);
-    write_stringln(str);
-    write_string("lvl1_ptr value: ");
-    hex_to_string(str, *lvl1_ptr);
-    write_stringln(str);
-    write_string("aligned+4096+TABLE_SIZE & 0x000: ");
-    lvl2_ptr = (uint32_t *) (((uint32_t) (aligned_space + 4096 + TABLE_SIZE)) & ~(0xfff));
-    hex_to_string(str, (uint32_t) lvl2_ptr);
-    write_stringln(str);
-    lvl1_pte = ((uint32_t) lvl2_ptr) | 0x000000001;
-    *lvl1_ptr = lvl1_pte;
-    write_string("level 1 pte: ");
-    hex_to_string(str, lvl1_pte);
-    write_stringln(str);
-
-    write_string("MMU_TABLE[VPN1]: ");
-    hex_to_string(str, aligned_space[vpn1]);
-    write_stringln(str);
-    */
+    uint32_t og_svpn0 = s_vpn0;
+    while(stack < stack_end){
+        level0_address[s_vpn0] = create_pte(s_vpn1, s_vpn0, false, p->mode, true);
+        print_line_and_hex("level0_address[p_vpn0]: ", level0_address[p_vpn0]);
+        stack += 4096;
+        s_vpn0 += 1;
+    }
 }
 
 void mmu_unmap(PROCESS *p){
@@ -180,11 +155,29 @@ void test(){
 
 /* Custom functions */
 static uint32_t get_pn1(uint32_t value){
-    return (value >> 22) & 0x3ff;
+    uint32_t ret_val = (value >> 22) & 0x3ff;
+    print_line_and_hex("\tget_pn1() returning: ", ret_val);
+    return ret_val;
 }
 
 static uint32_t get_pn0(uint32_t value){
-    return (value >> 12) & 0x3ff;
+    uint32_t ret_val = (value >> 12) & 0x3ff;
+    print_line_and_hex("\tget_pn0() returning: ", ret_val);
+    return ret_val;
+}
+
+static uint32_t create_pte(uint32_t ppn1, uint32_t ppn0, bool is_program, uint32_t mode, bool is_level0){
+    uint32_t ret_val = 0, perms = 0;
+    if(is_program) perms = 0xb;
+    else perms = 0x7;
+
+    ret_val = (ppn1 << 20) | (ppn0 << 10) | perms;
+
+    if(mode == 0) ret_val |= 1 << 4;
+    else ret_val &= ~(1 << 4);
+
+    print_line_and_hex("\tcreate_pte() returning: ", ret_val);
+    return ret_val;
 }
 
 static void set_bit(uint32_t *value, uint32_t bit_index){
@@ -197,33 +190,8 @@ static void clear_bit(uint32_t *value, uint32_t bit_index){
     *value &= ~(1 << bit_index);
 }
 
-static void clear_string(char *string, uint32_t length){
-    for(uint32_t i = 0; i < length; i++) string[i] = '\0';
-}
-
-static void write_uint(uint32_t value){
-    char pstr[64];
-    hex_to_string(pstr, value);
-    write_string(pstr);
-    clear_string(pstr, 64);
-}
-
-static uint32_t bit_mask(int bit_start, int bit_end){
-    uint32_t mask = 0;
-    /* Check if the given bit_index is out of bounds */
-    if(bit_start > 31 || bit_end > 31) return mask;
-    /* Swap if the given start is greater than the given end */
-    if(bit_start > bit_end){
-        int temp = bit_start;
-        bit_start = bit_end;
-        bit_end = temp;
-    }
-
-    /* Left shift 1 by the difference between bit_end and bit_start, and subtract the result by 1 .
-    Then left shift the result of the subtraction by bit_start and OR with 1 left shifted by bit_end */
-    mask = (((1 << (bit_end - bit_start)) - 1) << bit_start) | (1 << bit_end);
-
-    return mask;
+static bool test_bit(const uint32_t *bitset, int bit_index){
+    return (((*bitset >> bit_index) & 1) == 1) ? true : false; 
 }
 
 static void print_line_and_hex(char *pre, uint32_t value, bool newline){
