@@ -27,6 +27,12 @@ VPN[1] = 890
 VPN[0] = 731
 page offset = 0xeef
 
+Get VPN[1], VPN[0], and the page offset of 0x1ab2_cdef
+VPN[1] = 106
+VPN[2] = 812
+Page Offset = 3567
+
+
 ## Clicker Questions
 
 1) What data structure is the RCU (Read-Copy-Update) made of? Linked List

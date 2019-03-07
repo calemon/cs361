@@ -9,8 +9,8 @@
     - -10 for not handling 8BIT and PODD.
     - Note, you don't need to return from a void function. You always have a return statement at the end of the function that is not needed.
 - [Lab 3](lab3/README.md): You will be implementing the interactive scheduler for Marz OS. You will be writing three different interactive scheduling algorithms: round robin, multilevel, and multilevel feedback.
-  - Grade: 90/100
-    - -10 You run through the entire list of processes, update the times, then start your scheduler. You should check to see if the time can be updated as you're trying to schedule it.
+  - Grade: 100/100 ~~90/100~~
+    - ~~-10 You run through the entire list of processes, update the times, then start your scheduler. You should check to see if the time can be updated as you're trying to schedule it.~~
 - [Lab 4](lab4/README.md): You will be writing a few functions required to implement the Sv32 memory management unit. This time, MZOS has both kernel and user space. Therefore, it is required that your code map/unmap and switch MMU pages to make sure that all user space lives in user space, and that all kernel space lives in kernel space.
 
 ## Powerpoints
