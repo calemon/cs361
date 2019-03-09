@@ -6,7 +6,7 @@
  */
 #include <mmu.h>
 
-#define DEBUG
+//#define MY_DEBUG
 
 /* Custom functions */
 static uint32_t get_pn1(uint32_t value);
@@ -21,8 +21,6 @@ extern uint32_t MMU_TABLE[MMU_TABLE_SIZE];
 const uint32_t SP_REG = 2;
 const uint32_t TABLE_SIZE = 4096;
 
-char str[64];
-
 void mmu_disable(){
     /* Get SATP register */
     uint32_t satp_reg = get_satp();
@@ -33,7 +31,7 @@ void mmu_disable(){
 }
 
 void mmu_enable(PROCESS *p){
-    #ifdef DEBUG
+    #ifdef MY_DEBUG
     uint32_t before = get_satp();
     #endif
     uint32_t satp_reg = 0;
@@ -46,7 +44,7 @@ void mmu_enable(PROCESS *p){
     satp_reg |= 1 << 31;
     set_satp(satp_reg);
 
-    #ifdef DEBUG
+    #ifdef MY_DEBUG
     print_line_and_hex("MMU_ENABLE - SATP Register changed from ", before, false);
     print_line_and_hex(" to ", get_satp());
     print_line_and_hex("    p->mmu_table = ", p->mmu_table);
@@ -54,7 +52,7 @@ void mmu_enable(PROCESS *p){
 }
 
 void mmu_map(PROCESS *p){
-    #ifdef DEBUG
+    #ifdef MY_DEBUG
     print_line_and_hex("\nMAPPING PROCESS for ", p->pid);
     #endif
 
@@ -83,64 +81,28 @@ void mmu_map(PROCESS *p){
     /* Calculate the level 0 page table */
     level0_address = root + 1024; // Adding 1024 because root is a pointer so 1024 * 4 = 4096
 
-    #ifdef DEBUG
-    write_stringln("");
-    print_line_and_hex("root: ", (uint32_t) root);
-    print_line_and_hex("level0_address: ", (uint32_t) level0_address);
-    print_line_and_hex("program: ", program, false);
-    print_line_and_hex(" and program_end: ", program_end);
-    print_line_and_hex("p_vpn1: ", p_vpn1);
-    print_line_and_hex("p_vpn0: ", p_vpn0);
-
-    print_line_and_hex("stack: ", stack, false);
-    print_line_and_hex(" and stack_end: ", stack_end);
-    print_line_and_hex("s_vpn1: ", s_vpn1);
-    print_line_and_hex("s_vpn0: ", s_vpn0);
-    write_stringln("");
-    #endif
-
     /* Adjust 34-bit physical address to 32-bit PTE and set level 1 entry to address of level 0 table */
     root[p_vpn1] = create_pte(get_pn1((uint32_t) level0_address), get_pn0((uint32_t) level0_address), true, p->mode, false);
-    #ifdef DEBUG
-    print_line_and_hex("entry for root[p_vpn1]: ", root[p_vpn1]);
-    #endif
 
     /* Insert PTEs for level 0 entries for program address */
-    #ifdef DEBUG
-    write_stringln("\nLevel 0 entries for program:");
-    #endif
     for(uint32_t i = p_vpn0; program <= program_end; i++, program += TABLE_SIZE){
         level0_address[i] = create_pte(get_pn1(program), get_pn0(program), true, p->mode, true);
-        #ifdef DEBUG
-        print_line_and_hex("Mapping entry program ", program, false);
-        print_line_and_hex(" for level0_address[", i, false);
-        print_line_and_hex("]: ", level0_address[i]);
-        #endif
     }
 
     /* Check if vpn1 was the same for both the program and stack, if it wasn't then create a new PTE */
     if(test_bit(&root[s_vpn1], 0) == false){
-        #ifdef DEBUG
+        #ifdef MY_DEBUG
         write_stringln("have to create new entry for level 1");
         #endif
         root[s_vpn1] = create_pte(get_pn1((uint32_t) level0_address), get_pn0((uint32_t) level0_address), false, p->mode, false);
     }
 
-    #ifdef DEBUG
-    write_stringln("\nLevel 0 entries for stack:");
-    #endif
-
     /* Insert PTEs for level 0 entries for stack address */
     for(uint32_t i = s_vpn0; stack <= stack_end; i++, stack += TABLE_SIZE){
         level0_address[i] = create_pte(get_pn1(stack), get_pn0(stack), false, p->mode, true);
-        #ifdef DEBUG
-        print_line_and_hex("Mapping entry stack ", stack, false);
-        print_line_and_hex(" for level0_address[", i, false);
-        print_line_and_hex("]: ", level0_address[i]);
-        #endif
     }
 
-    #ifdef DEBUG
+    #ifdef MY_DEBUG
     write_stringln("\nPrinting level 1 table entries...");
     print_entries(root, 1024);
     write_stringln("\nPrinting level 0 table entries...");
@@ -149,7 +111,7 @@ void mmu_map(PROCESS *p){
 }
 
 void mmu_unmap(PROCESS *p){
-    #ifdef DEBUG
+    #ifdef MY_DEBUG
     print_line_and_hex("\nUNMAPPING PROCESS for ", p->pid);
     #endif
 
@@ -175,11 +137,6 @@ void mmu_unmap(PROCESS *p){
 
     /* Set valid bit at root[p_vpn1] to 0 */
     root[p_vpn1] &= ~(0x1);
-
-    #ifdef DEBUG
-    print_line_and_hex("root[p_vpn1]: ", root[p_vpn1]);
-    print_line_and_hex("level0_address from table 1 entry: ", (uint32_t) level0_address);
-    #endif
     
     /* Make level 0 program entries invalid */
     for(uint32_t i = p_vpn0; program <= program_end; i++, program += TABLE_SIZE) level0_address[i] &= ~(0x1);
@@ -193,7 +150,7 @@ void mmu_unmap(PROCESS *p){
     /* Make level 0 stack entries invalid */
     for(uint32_t i = s_vpn0; stack <= stack_end; i++, stack += TABLE_SIZE) level0_address[i] &= ~(0x1);
 
-    #ifdef DEBUG
+    #ifdef MY_DEBUG
     write_stringln("\nPrinting level 1 table entries...");
     print_entries(root, 1024);
     write_stringln("\nPrinting level 0 table entries...");
@@ -301,7 +258,7 @@ void test(){
 /* Get PN[1] of a physical or virtual address */
 static uint32_t get_pn1(uint32_t value){
     uint32_t ret_val = (value >> 22) & 0x3ff;
-    #ifdef DEBUG
+    #ifdef MY_DEBUG
     //print_line_and_hex("\tget_pn1() returning: ", ret_val);
     #endif
     return ret_val;
@@ -310,7 +267,7 @@ static uint32_t get_pn1(uint32_t value){
 /* Get PN[0] of a physical or virtual address */
 static uint32_t get_pn0(uint32_t value){
     uint32_t ret_val = (value >> 12) & 0x3ff;
-    #ifdef DEBUG
+    #ifdef MY_DEBUG
     //print_line_and_hex("\tget_pn0() returning: ", ret_val);
     #endif
     return ret_val;
