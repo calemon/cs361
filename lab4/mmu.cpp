@@ -20,56 +20,78 @@ static void print_surrounding_entries(uint32_t *entry_address, uint32_t num_entr
 
 extern uint32_t MMU_TABLE[MMU_TABLE_SIZE];
 
-const uint32_t ALIGN_TO = 4096;
 const uint32_t SP_REG = 2;
 const uint32_t TABLE_SIZE = 4096;
 
 char str[64];
 
 void mmu_disable(){
+    #ifdef DEBUG
+    uint32_t before = get_satp();
+    #endif
     /* Get SATP register */
     uint32_t satp_reg = get_satp();
     /* Set MODE bit to 0 = Bare = No translation/protection between virtual and physical addresses */
     clear_bit(&satp_reg, 31);
     /* Set SATP register again */
     set_satp(satp_reg);
+
+    #ifdef DEBUG
+    //print_line_and_hex("MMU_DISABLE - SATP Register changed from ", before, false);
+    //print_line_and_hex(" to ", get_satp());
+    #endif
 }
 
 void mmu_enable(PROCESS *p){
-    uint32_t satp_reg;
+    #ifdef DEBUG
+    uint32_t before = get_satp();
+    #endif
+    uint32_t satp_reg = 0;
 
     /* Null mmu table so mmu_map has not been called */
     if(p->mmu_table == 0) return;
 
     /* Get satp_reg, set lower 21 bits to p->mmu_table and set the mode to 1 */
-    satp_reg = get_satp();
     satp_reg |= (p->mmu_table >> 12);
     set_bit(&satp_reg, 31);
     set_satp(satp_reg);
+
+    #ifdef DEBUG
+    print_line_and_hex("MMU_ENABLE - SATP Register changed from ", before, false);
+    print_line_and_hex(" to ", get_satp());
+    print_line_and_hex("    p->mmu_table = ", p->mmu_table);
+    #endif
 }
 
 void mmu_map(PROCESS *p){
+    #ifdef DEBUG
+    print_line_and_hex("\nMAPPING PROCESS for ", p->pid);
+    #endif
+
     uint32_t program, program_end, stack, stack_end, test;
     uint32_t *root, *level0_address;
 
+    /* Calculate program address, program end address, stack, and stack end address */
     program = (uint32_t) p->program & ~(0xfff);
-    program_end = (program + (ALIGN_TO - 1) + 4096) & ~(0xfff);
-    stack = (p->regs[SP_REG]) & ~(0xfff); // NEED TO FIX
-    stack_end = (stack + (ALIGN_TO - 1) + (2 * ALIGN_TO)) & ~(0xfff);
+    program_end = (program + (TABLE_SIZE - 1) + (2 * TABLE_SIZE)) & ~(0xfff);
+    stack = (p->regs[SP_REG]) & ~(0xfff);
+    stack_end = (stack + (TABLE_SIZE - 1) + (3 * TABLE_SIZE)) & ~(0xfff);
     
     /* Find process's root space then align it; set p->mmu_table to root */
     root = MMU_TABLE + (1024 * (p->pid - 1) * 10);
-    root = (uint32_t *) (((uint32_t) root + (ALIGN_TO - 1)) & -ALIGN_TO);
+    root = (uint32_t *) (((uint32_t) root + (TABLE_SIZE - 1)) & -TABLE_SIZE);
     
     /* Set p's mmu_table to the aligned address of root */
     p->mmu_table = (uint32_t) root;
 
+    /* Get vpn1 and vpn0 of both the program and the stack */
     uint32_t p_vpn1 = get_pn1(program);
     uint32_t p_vpn0 = get_pn0(program);
     uint32_t s_vpn1 = get_pn1(stack);
     uint32_t s_vpn0 = get_pn0(stack);
+    /* Calculate the level 0 page table */
+    level0_address = root + TABLE_SIZE;
 
-    level0_address = root + 8192;
     #ifdef DEBUG
     write_stringln("");
     print_line_and_hex("root: ", (uint32_t) root);
@@ -96,10 +118,11 @@ void mmu_map(PROCESS *p){
     #ifdef DEBUG
     write_stringln("\nLevel 0 entries for program:");
     #endif
-    for(uint32_t i = p_vpn0; program < program_end; i++, program += 4096){
-        level0_address[i] = create_pte(p_vpn1, p_vpn0, true, p->mode, true);
+    for(uint32_t i = p_vpn0; program <= program_end; i++, program += TABLE_SIZE){
+        level0_address[i] = create_pte(get_pn1(program), get_pn0(program), true, p->mode, true);
         #ifdef DEBUG
-        print_line_and_hex("entry for level0_address[", i, false);
+        print_line_and_hex("Mapping entry program ", program, false);
+        print_line_and_hex(" for level0_address[", i, false);
         print_line_and_hex("]: ", level0_address[i]);
         #endif
     }
@@ -116,10 +139,11 @@ void mmu_map(PROCESS *p){
     write_stringln("\nLevel 0 entries for stack:");
     #endif
 
-    for(uint32_t i = s_vpn0; stack < stack_end; i++, stack += 4096){
-        level0_address[i] = create_pte(s_vpn1, s_vpn0, false, p->mode, true);
+    for(uint32_t i = s_vpn0; stack <= stack_end; i++, stack += TABLE_SIZE){
+        level0_address[i] = create_pte(get_pn1(stack), get_pn0(stack), false, p->mode, true);
         #ifdef DEBUG
-        print_line_and_hex("entry for level0_address[", i, false);
+        print_line_and_hex("Mapping entry stack ", stack, false);
+        print_line_and_hex(" for level0_address[", i, false);
         print_line_and_hex("]: ", level0_address[i]);
         #endif
     }
@@ -133,17 +157,21 @@ void mmu_map(PROCESS *p){
 }
 
 void mmu_unmap(PROCESS *p){
+    #ifdef DEBUG
+    print_line_and_hex("\nUNMAPPING PROCESS for ", p->pid);
+    #endif
+
     uint32_t program, program_end, stack, stack_end, test;
     uint32_t *root, *level0_address;
 
     program = (uint32_t) p->program & ~(0xfff);
-    program_end = (program + (ALIGN_TO - 1) + 4096) & ~(0xfff);
+    program_end = (program + (TABLE_SIZE - 1) + TABLE_SIZE) & ~(0xfff);
     stack = (p->regs[SP_REG]) & ~(0xfff); // NEED TO FIX
-    stack_end = (stack + (ALIGN_TO - 1) + (2 * ALIGN_TO)) & ~(0xfff);
+    stack_end = (stack + (TABLE_SIZE - 1) + (2 * TABLE_SIZE)) & ~(0xfff);
     
     /* Find process's root space then align it; set p->mmu_table to root */
     root = MMU_TABLE + (1024 * (p->pid - 1) * 10);
-    root = (uint32_t *) (((uint32_t) root + (ALIGN_TO - 1)) & -ALIGN_TO);
+    root = (uint32_t *) (((uint32_t) root + (TABLE_SIZE - 1)) & -TABLE_SIZE);
     
     /* Set p's mmu_table to the aligned address of root */
     p->mmu_table = (uint32_t) root;
@@ -165,7 +193,7 @@ void mmu_unmap(PROCESS *p){
     #endif
     
     /* Make level 0 program entries invalid */
-    for(uint32_t i = p_vpn0; program < program_end; i++, program += 4096) level0_address[i] &= ~(0x1);
+    for(uint32_t i = p_vpn0; program <= program_end; i++, program += TABLE_SIZE) level0_address[i] &= ~(0x1);
 
     /* Check if vpn1 was the same for both the program and stack, if it wasn't then make stack's vpn1 entry invalid */
     if(test_bit(&root[s_vpn1], 0) == true){
@@ -174,7 +202,7 @@ void mmu_unmap(PROCESS *p){
     }
 
     /* Make level 0 stack entries invalid */
-    for(uint32_t i = s_vpn0; stack < stack_end; i++, stack += 4096) level0_address[i] &= ~(0x1);
+    for(uint32_t i = s_vpn0; stack <= stack_end; i++, stack += TABLE_SIZE) level0_address[i] &= ~(0x1);
 
     #ifdef DEBUG
     write_stringln("\nPrinting level 1 table entries...");
@@ -184,8 +212,7 @@ void mmu_unmap(PROCESS *p){
     #endif
 }
 
-void hello()
-{
+void hello(){
 	//This is sample code. This will run the process for 10,000,000 iterations
 	//and then sleep for 5 seconds over and over again.
     ecall(SYS_SET_QUANTUM, 10);
@@ -195,11 +222,41 @@ void hello()
     } while(1);
 }
 
+void test_fcn1(){
+    for(volatile int i = 0; i < 10000; i++){
+        for(volatile int j = 0; j < 100000; j++);
+        if(i >= 5000){
+            ecall(SYS_SET_QUANTUM, 9);
+            ecall(SYS_SLEEP, 1);
+        } else if(i >= 1000){ 
+            ecall(SYS_SET_QUANTUM, 5);
+            ecall(SYS_SLEEP, 1);
+        } else if(i >= 100){ 
+            ecall(SYS_SET_QUANTUM, 3);
+        }
+    }
+    ecall(SYS_EXIT, 0);
+}
+
+void test_fcn2(){
+    for(volatile int i = 0; i < 20; i++){
+        ecall(SYS_SLEEP, 1);
+        if(i >= 15) ecall(SYS_SET_QUANTUM, 9);
+        else if (i >= 10) ecall(SYS_SET_QUANTUM, 6);
+        else if (i >= 5) ecall(SYS_SET_QUANTUM, 3);
+    }
+    ecall(SYS_EXIT, 0);
+}
+
 void test(){
-	//Put whatever you want to test here.
-    new_process(hello, 0, 0, MACHINE);
-    new_process(hello, 0, 0, SUPERVISOR);
-    new_process(hello, 0, 0, USER);
+	// Put whatever you want to test here.
+    //new_process(hello, 0, 0, MACHINE);
+    //new_process(hello, 0, 0, SUPERVISOR);
+    //new_process(hello, 0, 0, USER);
+    new_process(test_fcn1, -10, 0, USER);  
+    new_process(test_fcn2, -10, 0, USER);
+    new_process(test_fcn2, -10, 0, MACHINE);
+    new_process(test_fcn2, -10, 0, SUPERVISOR);
 }
 
 
@@ -271,10 +328,11 @@ static void print_line_and_hex(char *pre, uint32_t value, bool newline){
 
 static void print_surrounding_entries(uint32_t *entry_address, uint32_t num_entries_after){
     write_stringln(" ================= Entries ================= ");
+    print_line_and_hex("Entry = ", (uint32_t) entry_address);
     for(uint32_t i = 0; i < num_entries_after; i++){
         if(entry_address[i] != 0){
-            print_line_and_hex("  Address at ", (uint32_t) (entry_address + i), false);
-            print_line_and_hex(" = ", entry_address[i]);
+            print_line_and_hex("  Address at entry[", i, false);
+            print_line_and_hex("] = ", entry_address[i]);
         }
     }
     write_stringln(" =========================================== ");
