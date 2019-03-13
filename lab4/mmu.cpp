@@ -13,7 +13,7 @@ static uint32_t get_pn1(uint32_t value);
 static uint32_t get_pn0(uint32_t value);
 static uint32_t create_pte(uint32_t ppn1, uint32_t ppn0, bool is_program, uint32_t mode, bool is_level0);
 static bool test_bit(const uint32_t *bitset, int bit_index);
-static void print_line_and_hex(char *pre, uint32_t value, bool newline = true);
+static void print_line_and_hex(const char *pre, uint32_t value, bool newline = true);
 static void print_entries(uint32_t *entry_address, uint32_t num_entries_after);
 
 extern uint32_t MMU_TABLE[MMU_TABLE_SIZE];
@@ -81,6 +81,20 @@ void mmu_map(PROCESS *p){
     /* Calculate the level 0 page table */
     level0_address = root + 1024; // Adding 1024 because root is a pointer so 1024 * 4 = 4096
 
+    write_stringln("");
+    print_line_and_hex("root: ", (uint32_t) root);
+    print_line_and_hex("level0_address: ", (uint32_t) level0_address);
+    print_line_and_hex("program: ", program, false);
+    print_line_and_hex(" and program_end: ", program_end);
+    print_line_and_hex("p_vpn1: ", p_vpn1);
+    print_line_and_hex("p_vpn0: ", p_vpn0);
+
+    print_line_and_hex("stack: ", stack, false);
+    print_line_and_hex(" and stack_end: ", stack_end);
+    print_line_and_hex("s_vpn1: ", s_vpn1);
+    print_line_and_hex("s_vpn0: ", s_vpn0);
+    write_stringln("");
+
     /* Adjust 34-bit physical address to 32-bit PTE and set level 1 entry to address of level 0 table */
     root[p_vpn1] = create_pte(get_pn1((uint32_t) level0_address), get_pn0((uint32_t) level0_address), true, p->mode, false);
 
@@ -102,12 +116,12 @@ void mmu_map(PROCESS *p){
         level0_address[i] = create_pte(get_pn1(stack), get_pn0(stack), false, p->mode, true);
     }
 
-    #ifdef MY_DEBUG
+    //#ifdef MY_DEBUG
     write_stringln("\nPrinting level 1 table entries...");
     print_entries(root, 1024);
     write_stringln("\nPrinting level 0 table entries...");
     print_entries(level0_address, 1024);
-    #endif
+    //#endif
 }
 
 void mmu_unmap(PROCESS *p){
@@ -135,27 +149,35 @@ void mmu_unmap(PROCESS *p){
     /* Get address of level 0 table and adjust it to correct bit indices (32-bit number to 34-bit) */
     level0_address = (uint32_t *) ((root[p_vpn1] & ~(0x3ff)) << 2);
 
-    /* Set valid bit at root[p_vpn1] to 0 */
-    root[p_vpn1] &= ~(0x1);
+    for(uint32_t i = 0; i < 1024; i++){
+        if(test_bit(&root[i], 0) == true) root[i] &= ~(1);
+    }
     
-    /* Make level 0 program entries invalid */
-    for(uint32_t i = p_vpn0; program <= program_end; i++, program += TABLE_SIZE) level0_address[i] &= ~(0x1);
-
-    /* Check if vpn1 was the same for both the program and stack, if it wasn't then make stack's vpn1 entry invalid */
-    if(test_bit(&root[s_vpn1], 0) == true){
-        /* Set valid bit at root[s_vpn1] to 0 */
-        root[s_vpn1] &= ~(0x1);
+    for(uint32_t i = 0; i < 1024; i++){
+        if(test_bit(&level0_address[i], 0) == true) level0_address[i] &= ~(1);
     }
 
-    /* Make level 0 stack entries invalid */
-    for(uint32_t i = s_vpn0; stack <= stack_end; i++, stack += TABLE_SIZE) level0_address[i] &= ~(0x1);
+    /* Set valid bit at root[p_vpn1] to 0 */
+    //root[p_vpn1] &= ~(0x1);
+    
+    /* Make level 0 program entries invalid */
+    //for(uint32_t i = p_vpn0; program <= program_end; i++, program += TABLE_SIZE) level0_address[i] &= ~(0x1);
 
-    #ifdef MY_DEBUG
+    /* Check if vpn1 was the same for both the program and stack, if it wasn't then make stack's vpn1 entry invalid */
+    //if(test_bit(&root[s_vpn1], 0) == true){
+        /* Set valid bit at root[s_vpn1] to 0 */
+    //    root[s_vpn1] &= ~(0x1);
+    //}
+
+    /* Make level 0 stack entries invalid */
+    //for(uint32_t i = s_vpn0; stack <= stack_end; i++, stack += TABLE_SIZE) level0_address[i] &= ~(0x1);
+
+    //#ifdef MY_DEBUG
     write_stringln("\nPrinting level 1 table entries...");
     print_entries(root, 1024);
     write_stringln("\nPrinting level 0 table entries...");
     print_entries(level0_address, 1024);
-    #endif
+    //#endif
 }
 
 void hello(){
@@ -245,13 +267,13 @@ void test_fcn3(){
 
 void test(){
 	// Put whatever you want to test here.
-    new_process(hello, -7, 1, USER);
-    new_process(hello, 0, 2, USER);
+    //new_process(hello, -7, 1, USER);
+    //new_process(hello, 0, 2, USER);
     new_process(test_fcn1, -6, 0, USER);
-    new_process(test_fcn2, -1, 0, USER);
-    new_process(test_fcn3, 1, 0, USER);
-    new_process(test_fcn3, -5, 0, USER);
-    new_process(test_fcn3, 6, 0, USER);
+    //new_process(test_fcn2, -1, 0, USER);
+    //new_process(test_fcn3, 1, 0, USER);
+    //new_process(test_fcn3, -5, 0, USER);
+    //new_process(test_fcn3, 6, 0, USER);
 }
 
 /* Custom functions */
@@ -304,7 +326,7 @@ static bool test_bit(const uint32_t *bitset, int bit_index){
 }
 
 /* Print a string (pre) before the given value */
-static void print_line_and_hex(char *pre, uint32_t value, bool newline){
+static void print_line_and_hex(const char *pre, uint32_t value, bool newline){
     char hex_val[64];
     write_string(pre);
     hex_to_string(hex_val, value);
