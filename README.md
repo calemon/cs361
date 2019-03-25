@@ -12,6 +12,9 @@
   - Grade: 100/100 ~~90/100~~
     - ~~-10 You run through the entire list of processes, update the times, then start your scheduler. You should check to see if the time can be updated as you're trying to schedule it.~~
 - [Lab 4](lab4/README.md): You will be writing a few functions required to implement the Sv32 memory management unit. This time, MZOS has both kernel and user space. Therefore, it is required that your code map/unmap and switch MMU pages to make sure that all user space lives in user space, and that all kernel space lives in kernel space.
+  - Grade: 100/100
+    - "Very well done!" Stephen Gregory Marz, Mar 9 at 4:16pm
+    - "By the way, C-style string literals are const char * since they are r-values. That's why you get those warnings." Stephen Gregory Marz, Mar 9 at 4:16pm 
 
 ## Powerpoints
 
