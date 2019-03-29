@@ -61,3 +61,11 @@ The block file is a simple file (not the best filesystem but simple enough). The
 Here is a depiction of the block file:
 
 ![](BlockLayout.png)
+
+## Lab 5 Overview 3/29/19 Notes
+
+Read block header in fs_drive
+- Read all block header in memory
+- Will have global variables
+- Most people used maps
+
