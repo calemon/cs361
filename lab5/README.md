@@ -8,7 +8,7 @@ You will need to use the Hydra machines as it has the fuse libraries on it (or y
 
 All of the files you'll need are in /home/smarz1/Develop/cs361/fuse/ on any Hydra, Tesla, or Arc machine.
 
-Take a look at the [Filesystem_Functions.pptx](Filesystem_Functions.pptx) file for a description of each function.
+Take a look at the [Filesystem_Functions.pdf](Filesystem_Functions.pdf) file for a description of each function.
 
 Copy Makefile, fs.cpp (you must use a .cpp file, even though you may write it as if it were C), and fs.h into your local directory. You'll also want to create a fresh, new simulated hard drive by using
 
