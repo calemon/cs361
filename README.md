@@ -12,6 +12,10 @@
   - Grade: 100/100 ~~90/100~~
     - ~~-10 You run through the entire list of processes, update the times, then start your scheduler. You should check to see if the time can be updated as you're trying to schedule it.~~
 - [Lab 4](lab4/README.md): You will be writing a few functions required to implement the Sv32 memory management unit. This time, MZOS has both kernel and user space. Therefore, it is required that your code map/unmap and switch MMU pages to make sure that all user space lives in user space, and that all kernel space lives in kernel space.
+  - Grade: 100/100
+    - "Very well done!" Stephen Gregory Marz, Mar 9 at 4:16pm
+    - "By the way, C-style string literals are const char * since they are r-values. That's why you get those warnings." Stephen Gregory Marz, Mar 9 at 4:16pm
+- [Lab 5](lab5/README.md): This project is all about implementing a file system in a true environment. You will be using a kernel module and library called FUSE--Filesystem in Userspace. This is a real filesystem in Linux and works with the Hydra machines. You will be writing several functions that read and write to a block file and allow the user to interact with your filesystem.
 
 ## Powerpoints
 
