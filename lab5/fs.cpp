@@ -73,10 +73,12 @@ int debugf(const char *fmt, ...)
 #endif
 
 /*
-*
 * START HERE W/ fs_drive()
-*
 */
+#include <map>
+
+/* Globals */
+map <char*, NODE> node_map;
 
 /*
 * Read the hard drive file specified by dname
