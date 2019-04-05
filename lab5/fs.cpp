@@ -77,8 +77,11 @@ int debugf(const char *fmt, ...)
 */
 #include <map>
 
+/* Custom Functions */
+static void print_node(NODE *inode);
+
 /* Globals */
-map <char*, NODE> node_map;
+map <char*, NODE *> inodes_map;
 
 /*
 * Read the hard drive file specified by dname
@@ -103,10 +106,27 @@ int fs_drive(const char *dname){
     /* Read in block header info */
     BLOCK_HEADER bh;
     if(fread(&bh, sizeof(bh), 1, harddrive) != 1) return -EPERM;
+    if(strncmp(bh.magic, MAGIC, sizeof(MAGIC)) != 0) return -EPERM;
 
-    /* Begin reading in each node */
-    NODE node;
+    /* Read in each node */
+    uint64_t list_num;
+    for(unsigned int i = 0; i < bh.nodes; i++){
+        NODE *inode = (NODE *) malloc(sizeof(NODE *));
+        if(fread(inode, 1, ONDISK_NODE_SIZE, harddrive) != ONDISK_NODE_SIZE) return -EPERM;
 
+        /* If reading in a file, need to read in it's data order */
+        if((inode->mode & ~(0xfff)) == S_IFREG){
+            if(fread(&list_num, 1, sizeof(list_num), harddrive) != sizeof(list_num)) return -EPERM;
+            debugf("List num = %u\n", list_num);
+        }
+
+        /* Insert into inodes_map */
+        inodes_map.insert(std::pair<char *, NODE *>(inode->name, inode));
+    }
+
+    for(auto it = inodes_map.begin(); it != inodes_map.end(); ++it){
+        print_node(it->second);
+    }
 
 	debugf("fs_drive: %s\n", dname);
 	return -EPERM;
@@ -346,4 +366,9 @@ int main(int argc, char *argv[])
 
 	return fuse_main(sizeof(evars) / sizeof(evars[0]) - 1, evars, fops,
 			 (void *)HARD_DRIVE);
+}
+
+static void print_node(NODE *inode){
+    debugf("%s, %u, %u, %u, %u, %u, %u, %u, %u\n", inode->name, inode->id, inode->mode,
+        inode->ctime, inode->atime, inode->mtime, inode->uid, inode->gid, inode->size);
 }
