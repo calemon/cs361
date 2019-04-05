@@ -89,8 +89,25 @@ map <char*, NODE> node_map;
 * Right now this returns -EIO, so you'll get an Input/Output error
 * if you try to run this program without programming fs_drive.
 */
-int fs_drive(const char *dname)
-{
+int fs_drive(const char *dname){
+    /* Copy MAGIC to a null-terminated version */
+    char magic_term[9];
+    strcpy(magic_term, MAGIC);
+    magic_term[8] = '\0';
+
+    /* Open hard_drive, which is a file */
+    FILE *harddrive;
+    harddrive = fopen(dname,"rw");
+    if(harddrive == NULL) return -EPERM;
+
+    /* Read in block header info */
+    BLOCK_HEADER bh;
+    if(fread(&bh, sizeof(bh), 1, harddrive) != 1) return -EPERM;
+
+    /* Begin reading in each node */
+    NODE node;
+
+
 	debugf("fs_drive: %s\n", dname);
 	return -EPERM;
 }
@@ -100,8 +117,7 @@ int fs_drive(const char *dname)
 * except see if the file exists. If the file does exist, return 0,
 * otherwise return -ENOENT
 */
-int fs_open(const char *path, struct fuse_file_info *fi)
-{
+int fs_open(const char *path, struct fuse_file_info *fi){
 	debugf("fs_open: %s\n", path);
 	return -EIO;
 }
