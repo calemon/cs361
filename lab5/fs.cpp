@@ -76,12 +76,16 @@ int debugf(const char *fmt, ...)
 * START HERE W/ fs_drive()
 */
 #include <map>
+#include <vector>
 
 /* Custom Functions */
 static void print_node(NODE *inode);
 
 /* Globals */
 map <char*, NODE *> inodes_map;
+map<uint64_t, BLOCK *> block_map;
+BLOCK_HEADER *block_header;
+
 
 /*
 * Read the hard drive file specified by dname
@@ -93,43 +97,52 @@ map <char*, NODE *> inodes_map;
 * if you try to run this program without programming fs_drive.
 */
 int fs_drive(const char *dname){
-    /* Copy MAGIC to a null-terminated version */
-    char magic_term[9];
-    strcpy(magic_term, MAGIC);
-    magic_term[8] = '\0';
+	debugf("fs_drive: %s\n", dname);
 
     /* Open hard_drive, which is a file */
     FILE *harddrive;
-    harddrive = fopen(dname,"rw");
+    harddrive = fopen(dname,"r");
     if(harddrive == NULL) return -EPERM;
 
     /* Read in block header info */
-    BLOCK_HEADER bh;
-    if(fread(&bh, sizeof(bh), 1, harddrive) != 1) return -EPERM;
-    if(strncmp(bh.magic, MAGIC, sizeof(MAGIC)) != 0) return -EPERM;
+    block_header = (BLOCK_HEADER *) malloc(sizeof(BLOCK_HEADER));
+    if(fread(block_header, sizeof(BLOCK_HEADER), 1, harddrive) != 1) return -EPERM;
+    if(strncmp(block_header->magic, MAGIC, sizeof(MAGIC)) != 0) return -EINVAL;
+
+    debugf("Blocksize = %u, Nodes = %u, Blocks = %u\n", block_header->block_size, block_header->nodes, block_header->blocks);
 
     /* Read in each node */
-    uint64_t list_num;
-    for(unsigned int i = 0; i < bh.nodes; i++){
+    uint64_t block_num;
+    for(unsigned int i = 0; i < block_header->nodes; i++){
+        /* Create a new node and read it in */
         NODE *inode = (NODE *) malloc(sizeof(NODE *));
-        if(fread(inode, 1, ONDISK_NODE_SIZE, harddrive) != ONDISK_NODE_SIZE) return -EPERM;
+        if(fread(inode, ONDISK_NODE_SIZE, 1, harddrive) != 1) return -EPERM;
+        inode->blocks = NULL;
 
-        /* If reading in a file, need to read in it's data order */
+        debugf("NODE: %s [%u]\n", inode->name, inode->id);
+
+        /* If reading in a file, need to read in it's data order so read in it's list number */
         if((inode->mode & ~(0xfff)) == S_IFREG){
-            if(fread(&list_num, 1, sizeof(list_num), harddrive) != sizeof(list_num)) return -EPERM;
-            debugf("List num = %u\n", list_num);
+            block_num = (inode->size / block_header->block_size) + 1;
+			inode->blocks = (uint64_t *) malloc(block_num * sizeof(uint64_t));
+            if(fread(inode->blocks, 1, sizeof(uint64_t) * block_num, harddrive) != sizeof(uint64_t) * block_num) return -EPERM;
         }
 
         /* Insert into inodes_map */
         inodes_map.insert(std::pair<char *, NODE *>(inode->name, inode));
     }
 
-    for(auto it = inodes_map.begin(); it != inodes_map.end(); ++it){
-        print_node(it->second);
+    for(unsigned int i = 0; i < block_header->blocks; i++){
+        /* Create new block and data, read it in */
+        BLOCK *block = (BLOCK *) malloc(sizeof(BLOCK));
+        block->data = (char *) malloc(sizeof(char) * block_header->block_size);
+        if(fread(block->data, sizeof(char), block_header->block_size, harddrive) != block_header->block_size) return -EPERM;
+        
+        /* Insert into block_map */
+        block_map.insert(std::pair<uint64_t, BLOCK *>(i, block));
     }
 
-	debugf("fs_drive: %s\n", dname);
-	return -EPERM;
+	return 0;
 }
 
 /*
@@ -201,6 +214,8 @@ int fs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 int fs_getattr(const char *path, struct stat *s)
 {
 	debugf("fs_getattr: %s\n", path);
+
+    
 	return -EIO;
 }
 
@@ -369,6 +384,6 @@ int main(int argc, char *argv[])
 }
 
 static void print_node(NODE *inode){
-    debugf("%s, %u, %u, %u, %u, %u, %u, %u, %u\n", inode->name, inode->id, inode->mode,
-        inode->ctime, inode->atime, inode->mtime, inode->uid, inode->gid, inode->size);
+    debugf("%s, %u, %u, %u, %u, %u, %u, %u, %u, 0x%x\n", inode->name, inode->id, inode->mode,
+        inode->ctime, inode->atime, inode->mtime, inode->uid, inode->gid, inode->size, inode->blocks);
 }
