@@ -82,8 +82,10 @@ int debugf(const char *fmt, ...)
 static void print_node(NODE *inode);
 
 /* Globals */
-map <char*, NODE *> inodes_map;
+map <string, NODE *> inodes_map;
+map <string, NODE *>::iterator node_it;
 map<uint64_t, BLOCK *> block_map;
+map<uint64_t, BLOCK *>::iterator block_it;
 BLOCK_HEADER *block_header;
 
 
@@ -115,11 +117,9 @@ int fs_drive(const char *dname){
     uint64_t block_num;
     for(unsigned int i = 0; i < block_header->nodes; i++){
         /* Create a new node and read it in */
-        NODE *inode = (NODE *) malloc(sizeof(NODE *));
+        NODE *inode = (NODE *) malloc(sizeof(NODE));
         if(fread(inode, ONDISK_NODE_SIZE, 1, harddrive) != 1) return -EPERM;
         inode->blocks = NULL;
-
-        debugf("NODE: %s [%u]\n", inode->name, inode->id);
 
         /* If reading in a file, need to read in it's data order so read in it's list number */
         if((inode->mode & ~(0xfff)) == S_IFREG){
@@ -128,8 +128,10 @@ int fs_drive(const char *dname){
             if(fread(inode->blocks, 1, sizeof(uint64_t) * block_num, harddrive) != sizeof(uint64_t) * block_num) return -EPERM;
         }
 
+        debugf("NODE: %s [%u]\n", inode->name, inode->id);
+
         /* Insert into inodes_map */
-        inodes_map.insert(std::pair<char *, NODE *>(inode->name, inode));
+        inodes_map.insert(std::pair<string, NODE *>(inode->name, inode));
     }
 
     for(unsigned int i = 0; i < block_header->blocks; i++){
@@ -151,8 +153,19 @@ int fs_drive(const char *dname){
 * otherwise return -ENOENT
 */
 int fs_open(const char *path, struct fuse_file_info *fi){
-	debugf("fs_open: %s\n", path);
+    debugf("fs_open: %s\n", path);
 	return -EIO;
+    /*
+	debugf("fs_open: %s\n", path);
+
+	if((node_it = inodes_map.find((char *) path)) != inodes_map.end()){
+        debugf("    %s exists\n", path);
+        if((node_it->second->mode & ~(0xfff)) == S_IFREG) return 0;
+		//if((node_it->second->mode ^ (S_IFREG | node_it->second->mode)) == 0) return 0;
+	}
+
+	return -ENOENT;
+    */
 }
 
 /*
@@ -161,11 +174,51 @@ int fs_open(const char *path, struct fuse_file_info *fi){
 * need to start the reading at the offset given by <offset> and
 * write the data into *buf up to size bytes.
 */
-int fs_read(const char *path, char *buf, size_t size, off_t offset,
-	    struct fuse_file_info *fi)
-{
+int fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi){
 	debugf("fs_read: %s\n", path);
 	return -EIO;
+    /*
+    debugf("fs_read: %s\n", path);
+    debugf("    Size = %d, offset = %d\n", size);
+
+    if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
+
+    NODE *inode = node_it->second;
+    uint64_t *block;
+    uint64_t start_block = 0, start_byte = 0, total_bytes = 0, current_bytes = 0;
+
+    if(size > inode->size) size = inode->size;
+
+    if(offset != 0){
+        start_block = offset / block_header->block_size;
+		start_byte = offset % block_header->block_size;
+    }
+
+    block = inode->blocks + start_block;
+
+    for(uint64_t i = 0; total_bytes < size; i++){
+        if(start_byte != 0 && i == 0) {
+            if((size - total_bytes) > (block_header->block_size - start_byte)){
+                current_bytes = (block_header->block_size - start_byte);
+            } else {
+                current_bytes = (size - total_bytes);
+            }
+
+            memcpy(buf+total_bytes, block_map[*block]->data+start_byte, current_bytes);
+            total_bytes += current_bytes;
+	    } else {
+            if(size-total_bytes > block_header->block_size) {
+			    current_bytes = block_header->block_size;
+            } else {
+                current_bytes = (size - total_bytes);
+            }
+            memcpy(buf+total_bytes, block_map[*(block + i)]->data, current_bytes);
+            total_bytes += current_bytes;
+        }
+    }
+
+	return total_bytes;
+    */
 }
 
 /*
@@ -215,8 +268,23 @@ int fs_getattr(const char *path, struct stat *s)
 {
 	debugf("fs_getattr: %s\n", path);
 
-    
-	return -EIO;
+    NODE *inode;
+    if((node_it = inodes_map.find(path)) == inodes_map.end()) return -ENOENT;
+
+    debugf("    path found for \"%s\", getting attributes\n", node_it->first.c_str());
+    inode = node_it->second;
+
+    /* Set stat to inode's properties */
+    s->st_nlink = 1;
+	s->st_mode = inode->mode;
+	s->st_ctime = inode->ctime;
+	s->st_atime = inode->atime;
+	s->st_mtime = inode->mtime;
+	s->st_uid = inode->uid;
+	s->st_gid = inode->gid;
+	s->st_size = inode->size;
+
+	return 0;
 }
 
 /*
@@ -229,12 +297,36 @@ int fs_getattr(const char *path, struct stat *s)
 * You will see somefile when you do an ls
 * (assuming it passes fs_getattr)
 */
-int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-	       off_t offset, struct fuse_file_info *fi)
-{
+int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi){
 	debugf("fs_readdir: %s\n", path);
 
-	//filler(buf, <name of file/directory>, 0, 0)
+    if((node_it = inodes_map.find(path)) == inodes_map.end()) return -ENOENT;
+
+    NODE *inode = node_it->second;
+    string node_pathname(inode->name), current_path, path_substr;
+    uint64_t str_index;
+
+    if((inode->mode & ~(0xfff)) != S_IFDIR) return -ENOTDIR;
+    
+    for(node_it = inodes_map.begin(); node_it != inodes_map.end(); node_it++) {
+		current_path = node_it->first;
+
+		if(current_path.size() < node_pathname.size() || current_path == path) continue;
+
+		str_index = current_path.rfind("/");
+
+		if(node_pathname == "/")
+			path_substr = current_path.substr(0, str_index+1);
+		else
+			path_substr = current_path.substr(0, str_index);
+
+
+		if(node_pathname == path_substr) {
+		    debugf("    %s %s\n", node_pathname.c_str(), current_path.c_str());
+			filler(buf, current_path.substr(str_index+1).c_str(), 0, 0);
+		}
+	}
+
 	filler(buf, ".", 0, 0);
 	filler(buf, "..", 0, 0);
 
@@ -253,7 +345,13 @@ int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 int fs_opendir(const char *path, struct fuse_file_info *fi)
 {
 	debugf("fs_opendir: %s\n", path);
-	return -EIO;
+		
+	if((node_it = inodes_map.find((char *) path)) != inodes_map.end()){
+        debugf("    %s exists\n", path);
+		if((node_it->second->mode ^ (S_IFDIR | node_it->second->mode)) == 0) return 0;
+	}
+
+	return -ENOENT;
 }
 
 /*
