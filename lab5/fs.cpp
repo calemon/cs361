@@ -88,7 +88,6 @@ map<uint64_t, BLOCK *> block_map;
 map<uint64_t, BLOCK *>::iterator block_it;
 BLOCK_HEADER *block_header;
 
-
 /*
 * Read the hard drive file specified by dname
 * into memory. You may have to use globals to store
@@ -102,8 +101,7 @@ int fs_drive(const char *dname){
 	debugf("fs_drive: %s\n", dname);
 
     /* Open hard_drive, which is a file */
-    FILE *harddrive;
-    harddrive = fopen(dname,"r");
+    FILE *harddrive = fopen(dname,"r");
     if(harddrive == NULL) return -EPERM;
 
     /* Read in block header info */
@@ -153,19 +151,14 @@ int fs_drive(const char *dname){
 * otherwise return -ENOENT
 */
 int fs_open(const char *path, struct fuse_file_info *fi){
-    debugf("fs_open: %s\n", path);
-	return -EIO;
-    /*
 	debugf("fs_open: %s\n", path);
 
-	if((node_it = inodes_map.find((char *) path)) != inodes_map.end()){
-        debugf("    %s exists\n", path);
-        if((node_it->second->mode & ~(0xfff)) == S_IFREG) return 0;
-		//if((node_it->second->mode ^ (S_IFREG | node_it->second->mode)) == 0) return 0;
-	}
+	if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
 
-	return -ENOENT;
-    */
+    if((node_it->second->mode & ~(0xfff)) != S_IFREG) return -EINVAL;
+    debugf("    %s exists and is a regular file\n", path);
+
+	return 0;
 }
 
 /*
@@ -175,9 +168,6 @@ int fs_open(const char *path, struct fuse_file_info *fi){
 * write the data into *buf up to size bytes.
 */
 int fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi){
-	debugf("fs_read: %s\n", path);
-	return -EIO;
-    /*
     debugf("fs_read: %s\n", path);
     debugf("    Size = %d, offset = %d\n", size);
 
@@ -218,7 +208,6 @@ int fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     }
 
 	return total_bytes;
-    */
 }
 
 /*
@@ -230,9 +219,7 @@ int fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
 * system (fi->flags & O_RDONLY), then return -EROFS
 * If all works, return the number of bytes written.
 */
-int fs_write(const char *path, const char *data, size_t size, off_t offset,
-	     struct fuse_file_info *fi)
-{
+int fs_write(const char *path, const char *data, size_t size, off_t offset, struct fuse_file_info *fi){
 	debugf("fs_write: %s\n", path);
 	return -EIO;
 }
@@ -245,10 +232,32 @@ int fs_write(const char *path, const char *data, size_t size, off_t offset,
 * (fi->flags & O_RDONLY), then return -EROFS.
 * Otherwise, return 0 if all succeeds.
 */
-int fs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
-{
+int fs_create(const char *path, mode_t mode, struct fuse_file_info *fi){
 	debugf("fs_create: %s\n", path);
-	return -EIO;
+
+    /* Check basic conditions before writing to block */
+    if(fi->flags & O_RDONLY) return -EROFS;
+    if(strlen(path) > NAME_SIZE) return -ENAMETOOLONG;
+
+    /* Check if node with path already exists, error if it does */
+    if((node_it = inodes_map.find(path)) != inodes_map.end()) return -EACCES;
+
+    NODE *new_node = (NODE *) malloc(sizeof(NODE));
+    strcpy(new_node->name, path);
+    new_node->size = 0;
+    new_node->uid = getuid();
+    new_node->gid = getgid();
+    new_node->mode = mode | S_IFREG;
+    new_node->ctime = time(NULL);
+    new_node->mtime = time(NULL);
+    new_node->atime = time(NULL);
+    new_node->blocks = NULL;
+
+    inodes_map.insert(std::pair<string, NODE *>(path, new_node));
+    block_header->nodes++;
+    debugf("    Created new file node for %s\n", path);
+
+	return 0;
 }
 
 /*
@@ -381,7 +390,21 @@ int fs_chown(const char *path, uid_t uid, gid_t gid)
 int fs_unlink(const char *path)
 {
 	debugf("fs_unlink: %s\n", path);
-	return -EIO;
+
+    /* Check if path exists */
+    if((node_it = inodes_map.find((char*) path)) == inodes_map.end()) return -EACCES;
+
+    /* Check if inode is a directory, if it is return error */
+    NODE *inode = node_it->second;
+    if((inode->mode & ~(0xfff)) == S_IFDIR) return -EISDIR;
+
+    /* Delete inode and remove from maps/update block header */
+    delete inode;
+    inodes_map.erase(node_it);
+    block_header->nodes--;
+    debugf("    Removed %s\n", path);
+
+	return 0;
 }
 
 /*
@@ -392,7 +415,25 @@ int fs_unlink(const char *path)
 int fs_mkdir(const char *path, mode_t mode)
 {
 	debugf("fs_mkdir: %s\n", path);
-	return -EIO;
+
+    if(strlen(path) > NAME_SIZE) return -ENAMETOOLONG;
+    if((node_it = inodes_map.find((char* ) path)) != inodes_map.end()) return -EEXIST;
+
+    NODE *new_node = (NODE *) malloc(sizeof(NODE));
+    strcpy(new_node->name, path);
+    new_node->size = 0;
+    new_node->mode = S_IFDIR | mode;
+    new_node->uid = getuid();
+    new_node->gid = getgid();
+    new_node->ctime = time(NULL);
+    new_node->atime = time(NULL);
+    new_node->mtime = time(NULL);
+
+    inodes_map.insert(std::pair<string, NODE *>(path, new_node));
+    block_header->nodes++;
+    debugf("    Created new directory node for %s\n", path);
+
+	return 0;
 }
 
 /*
@@ -441,6 +482,39 @@ void fs_destroy(void *ptr)
 	debugf("fs_destroy: %s\n", filename);
 
 	/* Save the internal data to the hard drive specified by <filename> */
+    FILE *harddrive = fopen(filename, "w");
+    if(harddrive == NULL) return;
+
+    /* Write the block_header to the block file */
+    if(fwrite(block_header, sizeof(BLOCK_HEADER), 1, harddrive) != 1) return;
+    debugf("    Wrote block_header to \"%s\"\n", filename);
+
+    /* Write nodes to the block file */
+    NODE *cur_node;
+    uint64_t block_num;
+    for(node_it = inodes_map.begin(); node_it != inodes_map.end(); node_it++){
+        cur_node = node_it->second;
+        /* Write node */
+        if(fwrite(cur_node, ONDISK_NODE_SIZE, 1, harddrive) != 1) return;
+
+        /* Write block number for regular files */
+        if((cur_node->mode & ~(0xfff)) == S_IFREG){
+            block_num = (cur_node->size / block_header->block_size) + 1;
+            if(fwrite(cur_node->blocks, sizeof(uint64_t), block_num, harddrive) != block_num) return;
+        }
+
+        debugf("    Wrote node [%u] \"%s\" to \"%s\"\n", cur_node->id, cur_node->name, filename);
+    }
+
+    /* Write the blocks to the block file */
+    BLOCK *cur_block;
+    uint64_t i = 0;
+    for(block_it = block_map.begin(); block_it != block_map.end(); block_it++){
+        cur_block = block_it->second;
+        fwrite(cur_block->data, sizeof(char), block_header->block_size, harddrive);
+        debugf("    Wrote block %u to \"%s\"\n", i, filename);
+        i++;
+    }
 }
 
 /*
