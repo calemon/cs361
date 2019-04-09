@@ -275,14 +275,14 @@ int fs_getattr(const char *path, struct stat *s)
     inode = node_it->second;
 
     /* Set stat to inode's properties */
-    s->st_nlink = 1;
 	s->st_mode = inode->mode;
-	s->st_ctime = inode->ctime;
-	s->st_atime = inode->atime;
-	s->st_mtime = inode->mtime;
+    s->st_nlink = 1;
 	s->st_uid = inode->uid;
 	s->st_gid = inode->gid;
 	s->st_size = inode->size;
+	s->st_ctime = inode->ctime;
+	s->st_atime = inode->atime;
+	s->st_mtime = inode->mtime;
 
 	return 0;
 }
