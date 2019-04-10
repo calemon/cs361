@@ -256,6 +256,7 @@ int fs_create(const char *path, mode_t mode, struct fuse_file_info *fi){
     inodes_map.insert(std::pair<string, NODE *>(path, new_node));
     block_header->nodes++;
     debugf("    Created new file node for %s\n", path);
+    debugf("    New NODE: %s [%u]\n", new_node->name, new_node->id);
 
 	return 0;
 }
@@ -280,7 +281,6 @@ int fs_getattr(const char *path, struct stat *s)
     NODE *inode;
     if((node_it = inodes_map.find(path)) == inodes_map.end()) return -ENOENT;
 
-    debugf("    path found for \"%s\", getting attributes\n", node_it->first.c_str());
     inode = node_it->second;
 
     /* Set stat to inode's properties */
@@ -292,6 +292,7 @@ int fs_getattr(const char *path, struct stat *s)
 	s->st_ctime = inode->ctime;
 	s->st_atime = inode->atime;
 	s->st_mtime = inode->mtime;
+    debugf("    Returning attributes for \"%s\"\n", node_it->first.c_str());
 
 	return 0;
 }
@@ -324,10 +325,8 @@ int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 
 		str_index = current_path.rfind("/");
 
-		if(node_pathname == "/")
-			path_substr = current_path.substr(0, str_index+1);
-		else
-			path_substr = current_path.substr(0, str_index);
+		if(node_pathname == "/") path_substr = current_path.substr(0, str_index+1);
+		else path_substr = current_path.substr(0, str_index);
 
 
 		if(node_pathname == path_substr) {
@@ -368,7 +367,13 @@ int fs_opendir(const char *path, struct fuse_file_info *fi)
 */
 int fs_chmod(const char *path, mode_t mode)
 {
-	return -EIO;
+    debugf("fs_chmod: %s\n", path);
+
+    if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
+
+    node_it->second->mode = mode;
+    debugf("    Changed mode for [%u] \"%s\"\n", node_it->second->id, node_it->second->name);
+	return 0;
 }
 
 /*
@@ -377,7 +382,13 @@ int fs_chmod(const char *path, mode_t mode)
 int fs_chown(const char *path, uid_t uid, gid_t gid)
 {
 	debugf("fs_chown: %s\n", path);
-	return -EIO;
+
+    if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
+
+    node_it->second->uid = uid;
+    node_it->second->gid = gid;
+    debugf("    Changed ownership for [%u] \"%s\"\n", node_it->second->id, node_it->second->name);
+	return -0;
 }
 
 /*
@@ -421,6 +432,7 @@ int fs_mkdir(const char *path, mode_t mode)
 
     NODE *new_node = (NODE *) malloc(sizeof(NODE));
     strcpy(new_node->name, path);
+    new_node->id = block_header->nodes + 1;
     new_node->size = 0;
     new_node->mode = S_IFDIR | mode;
     new_node->uid = getuid();
@@ -432,6 +444,7 @@ int fs_mkdir(const char *path, mode_t mode)
     inodes_map.insert(std::pair<string, NODE *>(path, new_node));
     block_header->nodes++;
     debugf("    Created new directory node for %s\n", path);
+    debugf("    New NODE: %s [%u]\n", new_node->name, new_node->id);
 
 	return 0;
 }
@@ -556,6 +569,7 @@ int main(int argc, char *argv[])
 }
 
 static void print_node(NODE *inode){
+    //debugf("NODE: %s [%u]\n", inode->name, inode->id);
     debugf("%s, %u, %u, %u, %u, %u, %u, %u, %u, 0x%x\n", inode->name, inode->id, inode->mode,
         inode->ctime, inode->atime, inode->mtime, inode->uid, inode->gid, inode->size, inode->blocks);
 }
