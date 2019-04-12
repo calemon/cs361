@@ -142,6 +142,10 @@ int fs_drive(const char *dname){
         block_map.insert(std::pair<uint64_t, BLOCK *>(i, block));
     }
 
+    for(node_it = inodes_map.begin(); node_it != inodes_map.end(); node_it++){
+        debugf("%s\n", node_it->second->name);
+    }
+
 	return 0;
 }
 
@@ -221,6 +225,34 @@ int fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
 */
 int fs_write(const char *path, const char *data, size_t size, off_t offset, struct fuse_file_info *fi){
 	debugf("fs_write: %s\n", path);
+
+    /*
+    uint64_t *new_blocks, *start;
+    BLOCK *new_block;
+    uint64_t start_block, start_byte;
+    uint64_t current_bytes = 0;
+
+    if(fi->flags & O_RDONLY) return -EROFS;
+    if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
+    if((node_it->second->mode & ~(0xfff)) == S_IFDIR) return -EISDIR;
+
+    NODE *inode = node_it->second;
+    uint64_t node_num_blocks = inode->size / block_header->size + 1;
+    uint64_t calculated_size = ((size + offset - node_it->second->size) / block_header->block_size) + block_map.size() + 1;
+    if(calculated_size * block_header->block_size > MAX_DRIVE_SIZE) return -ENOSPC;
+
+    if((size + offset) / block_header->block_size > inode->size / block_header->block_size){
+        new_blocks = (uint64_t *) malloc(sizeof(uint64_t) * ((size + offset) / block_header->block_size));
+        memcpy(new_blocks, inode->blocks, sizeof(uint64_t) * node_num_blocks);
+        free(inode->blocks);
+        inode->blocks = new_blocks;
+
+        for(uint64_t i = node_num_blocks; i < (size + offset) / block_header->block_size; i++){
+
+        }
+    }
+    */
+
 	return -EIO;
 }
 
@@ -274,8 +306,7 @@ int fs_create(const char *path, mode_t mode, struct fuse_file_info *fi){
 * Please see stat for more information on the structure. Not
 * all fields will be filled by your filesystem.
 */
-int fs_getattr(const char *path, struct stat *s)
-{
+int fs_getattr(const char *path, struct stat *s){
 	debugf("fs_getattr: %s\n", path);
 
     NODE *inode;
@@ -350,8 +381,7 @@ int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 * it just checks to see if the directory exists. If it does,
 * return 0, otherwise return -ENOENT
 */
-int fs_opendir(const char *path, struct fuse_file_info *fi)
-{
+int fs_opendir(const char *path, struct fuse_file_info *fi){
 	debugf("fs_opendir: %s\n", path);
 		
 	if((node_it = inodes_map.find((char *) path)) != inodes_map.end()){
@@ -365,8 +395,7 @@ int fs_opendir(const char *path, struct fuse_file_info *fi)
 /*
 * Change the mode (permissions) of <path> to <mode>
 */
-int fs_chmod(const char *path, mode_t mode)
-{
+int fs_chmod(const char *path, mode_t mode){
     debugf("fs_chmod: %s\n", path);
 
     if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
@@ -379,8 +408,7 @@ int fs_chmod(const char *path, mode_t mode)
 /*
 * Change the ownership of <path> to user id <uid> and group id <gid>
 */
-int fs_chown(const char *path, uid_t uid, gid_t gid)
-{
+int fs_chown(const char *path, uid_t uid, gid_t gid){
 	debugf("fs_chown: %s\n", path);
 
     if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
@@ -398,8 +426,7 @@ int fs_chown(const char *path, uid_t uid, gid_t gid)
 * be handled by the operating system.
 * Otherwise, delete the file <path> and return 0.
 */
-int fs_unlink(const char *path)
-{
+int fs_unlink(const char *path){
 	debugf("fs_unlink: %s\n", path);
 
     /* Check if path exists */
@@ -423,8 +450,7 @@ int fs_unlink(const char *path)
 * the directory already exists, return -EEXIST. If this function
 * succeeds, return 0.
 */
-int fs_mkdir(const char *path, mode_t mode)
-{
+int fs_mkdir(const char *path, mode_t mode){
 	debugf("fs_mkdir: %s\n", path);
 
     if(strlen(path) > NAME_SIZE) return -ENAMETOOLONG;
@@ -454,10 +480,32 @@ int fs_mkdir(const char *path, mode_t mode)
 * empty first. If it isn't, return -ENOTEMPTY, otherwise
 * remove the directory and return 0.
 */
-int fs_rmdir(const char *path)
-{
+int fs_rmdir(const char *path){
 	debugf("fs_rmdir: %s\n", path);
-	return -EIO;
+
+    if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
+    if((node_it->second->mode & ~(0xfff)) != S_IFDIR) return -ENOTDIR;
+
+    string del_path = node_it->first, cur_path, sub_path;
+    for(node_it; node_it != inodes_map.end(); node_it++){
+        cur_path = node_it->first;
+        if(cur_path.size() < del_path.size() || cur_path == del_path) continue;
+
+        uint64_t str_index;
+        str_index = cur_path.rfind("/");
+
+        if(cur_path == "/") sub_path = cur_path.substr(0, str_index + 1);
+        else sub_path = cur_path.substr(0, str_index);
+
+        debugf("    cur_path: %s   -----    sub_path: %s\n", cur_path.c_str(), sub_path.c_str());
+        if(cur_path != sub_path) return -ENOTEMPTY;
+    }
+
+    node_it = inodes_map.find((char *) path);
+    free(node_it->second);
+    inodes_map.erase(node_it);
+    block_header->nodes--;
+	return 0;
 }
 
 /*
@@ -466,10 +514,36 @@ int fs_rmdir(const char *path)
 * the new_name's path doesn't exist return -ENOENT. If
 * you were able to rename the node, then return 0.
 */
-int fs_rename(const char *path, const char *new_name)
-{
+int fs_rename(const char *path, const char *new_name){
 	debugf("fs_rename: %s -> %s\n", path, new_name);
-	return -EIO;
+
+    if(strlen(new_name) > NAME_SIZE) return -ENAMETOOLONG;
+
+    if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
+
+    uint64_t str_index;
+    string new_path, cur_path;
+
+    new_path = new_name;
+    str_index = new_path.rfind("/");
+    if(new_path == "/") new_path = new_path.substr(0, str_index + 1);
+    else new_path = new_path.substr(0, str_index);
+
+    for(node_it = inodes_map.begin(); node_it != inodes_map.end(); node_it++){
+        cur_path = node_it->first;
+        debugf("    cur_path: %s   -----   new_path: %s\n", new_path.c_str(), cur_path.c_str());
+        if(new_path == cur_path){
+            debugf("  * cur_path: %s   -----   new_path: %s\n", new_path.c_str(), cur_path.c_str());
+            node_it = inodes_map.find(path);
+            strcpy(node_it->second->name, new_name);
+            inodes_map.insert(std::pair<string, NODE *>(new_name, node_it->second));
+            inodes_map.erase(node_it);
+
+            return 0;
+        }
+    }
+
+	return -ENOTEMPTY;
 }
 
 /*
@@ -479,8 +553,7 @@ int fs_rename(const char *path, const char *new_name)
 * the node with the number of blocks it will take. Return 0 
 * if successful
 */
-int fs_truncate(const char *path, off_t size)
-{
+int fs_truncate(const char *path, off_t size){
 	debugf("fs_truncate: %s to size %d\n", path, size);
 	return -EIO;
 }
@@ -489,8 +562,7 @@ int fs_truncate(const char *path, off_t size)
 * fs_destroy is called when the mountpoint is unmounted
 * this should save the hard drive back into <filename>
 */
-void fs_destroy(void *ptr)
-{
+void fs_destroy(void *ptr){
 	const char *filename = (const char *)ptr;
 	debugf("fs_destroy: %s\n", filename);
 
