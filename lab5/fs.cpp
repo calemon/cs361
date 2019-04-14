@@ -82,11 +82,11 @@ int debugf(const char *fmt, ...)
 static void print_node(NODE *inode);
 
 /* Globals */
+BLOCK_HEADER *block_header;
 map <string, NODE *> inodes_map;
 map <string, NODE *>::iterator node_it;
 map<uint64_t, BLOCK *> block_map;
 map<uint64_t, BLOCK *>::iterator block_it;
-BLOCK_HEADER *block_header;
 
 /*
 * Read the hard drive file specified by dname
@@ -120,7 +120,8 @@ int fs_drive(const char *dname){
         inode->blocks = NULL;
 
         /* If reading in a file, need to read in it's data order so read in it's list number */
-        if((inode->mode & ~(0xfff)) == S_IFREG){
+        //if((inode->mode & ~(0xfff)) == S_IFREG){
+        if(S_ISREG(inode->mode)){
             block_num = (inode->size / block_header->block_size) + 1;
 			inode->blocks = (uint64_t *) malloc(block_num * sizeof(uint64_t));
             if(fread(inode->blocks, 1, sizeof(uint64_t) * block_num, harddrive) != sizeof(uint64_t) * block_num) return -EPERM;
@@ -159,7 +160,8 @@ int fs_open(const char *path, struct fuse_file_info *fi){
 
 	if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
 
-    if((node_it->second->mode & ~(0xfff)) != S_IFREG) return -EINVAL;
+    //if((node_it->second->mode & ~(0xfff)) != S_IFREG) return -EINVAL;
+    if(!S_ISREG(node_it->second->mode)) return -EINVAL;
     debugf("    %s exists and is a regular file\n", path);
 
 	return 0;
@@ -347,7 +349,8 @@ int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
     string node_pathname(inode->name), current_path, path_substr;
     uint64_t str_index;
 
-    if((inode->mode & ~(0xfff)) != S_IFDIR) return -ENOTDIR;
+    //if((inode->mode & ~(0xfff)) != S_IFDIR) return -ENOTDIR;
+    if(!S_ISDIR(inode->mode)) return -ENOTDIR;
     
     for(node_it = inodes_map.begin(); node_it != inodes_map.end(); node_it++) {
 		current_path = node_it->first;
@@ -386,7 +389,8 @@ int fs_opendir(const char *path, struct fuse_file_info *fi){
 		
 	if((node_it = inodes_map.find((char *) path)) != inodes_map.end()){
         debugf("    %s exists\n", path);
-		if((node_it->second->mode ^ (S_IFDIR | node_it->second->mode)) == 0) return 0;
+		//if((node_it->second->mode ^ (S_IFDIR | node_it->second->mode)) == 0) return 0;
+        if(S_ISDIR(node_it->second->mode)) return 0;
 	}
 
 	return -ENOENT;
@@ -434,7 +438,8 @@ int fs_unlink(const char *path){
 
     /* Check if inode is a directory, if it is return error */
     NODE *inode = node_it->second;
-    if((inode->mode & ~(0xfff)) == S_IFDIR) return -EISDIR;
+    //if((inode->mode & ~(0xfff)) == S_IFDIR) return -EISDIR;
+    if(S_ISDIR(inode->mode)) return -EISDIR;
 
     /* Delete inode and remove from maps/update block header */
     delete inode;
@@ -484,7 +489,8 @@ int fs_rmdir(const char *path){
 	debugf("fs_rmdir: %s\n", path);
 
     if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
-    if((node_it->second->mode & ~(0xfff)) != S_IFDIR) return -ENOTDIR;
+    //if((node_it->second->mode & ~(0xfff)) != S_IFDIR) return -ENOTDIR;
+    if(!S_ISDIR(node_it->second->mode)) return -ENOTDIR;
 
     string del_path = node_it->first, cur_path, sub_path;
     for(node_it; node_it != inodes_map.end(); node_it++){
@@ -518,32 +524,51 @@ int fs_rename(const char *path, const char *new_name){
 	debugf("fs_rename: %s -> %s\n", path, new_name);
 
     if(strlen(new_name) > NAME_SIZE) return -ENAMETOOLONG;
-
     if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
 
-    uint64_t str_index;
-    string new_path, cur_path;
+    /* Check if new name path exists */
+    string new_name_parent = new_name;
+    new_name_parent = new_name_parent.substr(0, new_name_parent.rfind("/") + 1);
+    if(new_name_parent.size() != 0) new_name_parent = "/";
+    else if(inodes_map.find(new_name_parent) == inodes_map.end()) return -ENOENT;
 
-    new_path = new_name;
-    str_index = new_path.rfind("/");
-    if(new_path == "/") new_path = new_path.substr(0, str_index + 1);
-    else new_path = new_path.substr(0, str_index);
-
-    for(node_it = inodes_map.begin(); node_it != inodes_map.end(); node_it++){
-        cur_path = node_it->first;
-        debugf("    cur_path: %s   -----   new_path: %s\n", new_path.c_str(), cur_path.c_str());
-        if(new_path == cur_path){
-            debugf("  * cur_path: %s   -----   new_path: %s\n", new_path.c_str(), cur_path.c_str());
-            node_it = inodes_map.find(path);
-            strcpy(node_it->second->name, new_name);
-            inodes_map.insert(std::pair<string, NODE *>(new_name, node_it->second));
-            inodes_map.erase(node_it);
-
-            return 0;
-        }
+    /* If node is a regular file, can simply rename node and update inodes_map */
+    if(S_ISREG(node_it->second->mode)){
+        strcpy(node_it->second->name, new_name);
+        inodes_map.insert(std::pair<string, NODE *>(new_name, node_it->second));
+        inodes_map.erase(node_it);
+        debugf("    %s is a regular file --> %s\n", path, new_name);
+        return 0;
     }
 
-	return -ENOTEMPTY;
+    /* Directories need to recursively change all files that are underneath them. */
+    uint64_t str_index;
+    string new_path, cur_path, path_str;
+    new_path = new_name;
+    path_str = path;
+    for(node_it; node_it != inodes_map.end(); node_it++){
+        cur_path = node_it->first;
+        /* Skip anything smaller than path_str */
+        if(cur_path.size() < path_str.size()){
+            continue;
+        }
+        
+        /* Skip node if not in the same directory AND its not the beginning node */
+        if(cur_path.substr(0, path_str.size() + 1) != path_str + "/" && cur_path != path_str){
+            continue;
+        }
+
+        string new_path_str = cur_path;
+        new_path_str.replace(0, path_str.length(), new_path);
+
+        strcpy(node_it->second->name, new_path_str.c_str());
+        inodes_map.insert(std::pair<string, NODE *>(new_path_str, node_it->second));
+        inodes_map.erase(node_it);
+        
+        debugf("    %s --> %s\n", cur_path.c_str(), new_path_str.c_str());
+    }
+
+	return 0;
 }
 
 /*
@@ -583,7 +608,8 @@ void fs_destroy(void *ptr){
         if(fwrite(cur_node, ONDISK_NODE_SIZE, 1, harddrive) != 1) return;
 
         /* Write block number for regular files */
-        if((cur_node->mode & ~(0xfff)) == S_IFREG){
+        //if((cur_node->mode & ~(0xfff)) == S_IFREG){
+        if(S_ISREG(cur_node->mode)){
             block_num = (cur_node->size / block_header->block_size) + 1;
             if(fwrite(cur_node->blocks, sizeof(uint64_t), block_num, harddrive) != block_num) return;
         }
