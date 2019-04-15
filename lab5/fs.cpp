@@ -120,7 +120,6 @@ int fs_drive(const char *dname){
         inode->blocks = NULL;
 
         /* If reading in a file, need to read in it's data order so read in it's list number */
-        //if((inode->mode & ~(0xfff)) == S_IFREG){
         if(S_ISREG(inode->mode)){
             block_num = (inode->size / block_header->block_size) + 1;
 			inode->blocks = (uint64_t *) malloc(block_num * sizeof(uint64_t));
@@ -157,10 +156,11 @@ int fs_drive(const char *dname){
 */
 int fs_open(const char *path, struct fuse_file_info *fi){
 	debugf("fs_open: %s\n", path);
-
+    
+    /* Check if path exists in inodes map, error if it doesn't */
 	if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
 
-    //if((node_it->second->mode & ~(0xfff)) != S_IFREG) return -EINVAL;
+    /* Check if path is a regular file, and not a directory */
     if(!S_ISREG(node_it->second->mode)) return -EINVAL;
     debugf("    %s exists and is a regular file\n", path);
 
@@ -177,21 +177,26 @@ int fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     debugf("fs_read: %s\n", path);
     debugf("    Size = %d, offset = %d\n", size);
 
+    /* Check if path exists */
     if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
 
     NODE *inode = node_it->second;
     uint64_t *block;
     uint64_t start_block = 0, start_byte = 0, total_bytes = 0, current_bytes = 0;
 
-    if(size > inode->size) size = inode->size;
-
+    /* Calculate the starting block/byte if an offset is given */
     if(offset != 0){
         start_block = offset / block_header->block_size;
 		start_byte = offset % block_header->block_size;
     }
 
+    /* Set starting block */
     block = inode->blocks + start_block;
 
+    /* Limit size to size in node */
+    if(size > inode->size) size = inode->size;
+
+    /* Read in bytes of data based on the offset until size is reached */
     for(uint64_t i = 0; total_bytes < size; i++){
         if(start_byte != 0 && i == 0) {
             if((size - total_bytes) > (block_header->block_size - start_byte)){
@@ -200,6 +205,7 @@ int fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
                 current_bytes = (size - total_bytes);
             }
 
+            /* Copy specified bytes to the buffer, increase total bytes read */
             memcpy(buf+total_bytes, block_map[*block]->data+start_byte, current_bytes);
             total_bytes += current_bytes;
 	    } else {
@@ -208,6 +214,8 @@ int fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
             } else {
                 current_bytes = (size - total_bytes);
             }
+
+            /* Copy specified bytes to the buffer, increase total bytes read */
             memcpy(buf+total_bytes, block_map[*(block + i)]->data, current_bytes);
             total_bytes += current_bytes;
         }
@@ -227,33 +235,6 @@ int fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
 */
 int fs_write(const char *path, const char *data, size_t size, off_t offset, struct fuse_file_info *fi){
 	debugf("fs_write: %s\n", path);
-
-    /*
-    uint64_t *new_blocks, *start;
-    BLOCK *new_block;
-    uint64_t start_block, start_byte;
-    uint64_t current_bytes = 0;
-
-    if(fi->flags & O_RDONLY) return -EROFS;
-    if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
-    if((node_it->second->mode & ~(0xfff)) == S_IFDIR) return -EISDIR;
-
-    NODE *inode = node_it->second;
-    uint64_t node_num_blocks = inode->size / block_header->size + 1;
-    uint64_t calculated_size = ((size + offset - node_it->second->size) / block_header->block_size) + block_map.size() + 1;
-    if(calculated_size * block_header->block_size > MAX_DRIVE_SIZE) return -ENOSPC;
-
-    if((size + offset) / block_header->block_size > inode->size / block_header->block_size){
-        new_blocks = (uint64_t *) malloc(sizeof(uint64_t) * ((size + offset) / block_header->block_size));
-        memcpy(new_blocks, inode->blocks, sizeof(uint64_t) * node_num_blocks);
-        free(inode->blocks);
-        inode->blocks = new_blocks;
-
-        for(uint64_t i = node_num_blocks; i < (size + offset) / block_header->block_size; i++){
-
-        }
-    }
-    */
 
 	return -EIO;
 }
@@ -276,6 +257,7 @@ int fs_create(const char *path, mode_t mode, struct fuse_file_info *fi){
     /* Check if node with path already exists, error if it does */
     if((node_it = inodes_map.find(path)) != inodes_map.end()) return -EACCES;
 
+    /* Fill in node data */
     NODE *new_node = (NODE *) malloc(sizeof(NODE));
     strcpy(new_node->name, path);
     new_node->size = 0;
@@ -287,6 +269,7 @@ int fs_create(const char *path, mode_t mode, struct fuse_file_info *fi){
     new_node->atime = time(NULL);
     new_node->blocks = NULL;
 
+    /* Insert into map */
     inodes_map.insert(std::pair<string, NODE *>(path, new_node));
     block_header->nodes++;
     debugf("    Created new file node for %s\n", path);
@@ -343,15 +326,16 @@ int fs_getattr(const char *path, struct stat *s){
 int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi){
 	debugf("fs_readdir: %s\n", path);
 
+    /* Check if path exists */
     if((node_it = inodes_map.find(path)) == inodes_map.end()) return -ENOENT;
 
     NODE *inode = node_it->second;
     string node_pathname(inode->name), current_path, path_substr;
     uint64_t str_index;
 
-    //if((inode->mode & ~(0xfff)) != S_IFDIR) return -ENOTDIR;
     if(!S_ISDIR(inode->mode)) return -ENOTDIR;
-    
+
+    /* Call filler on all path belonging to path */
     for(node_it = inodes_map.begin(); node_it != inodes_map.end(); node_it++) {
 		current_path = node_it->first;
 
@@ -386,10 +370,10 @@ int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 */
 int fs_opendir(const char *path, struct fuse_file_info *fi){
 	debugf("fs_opendir: %s\n", path);
-		
+
+    /* Check if path exists and is directory type */
 	if((node_it = inodes_map.find((char *) path)) != inodes_map.end()){
         debugf("    %s exists\n", path);
-		//if((node_it->second->mode ^ (S_IFDIR | node_it->second->mode)) == 0) return 0;
         if(S_ISDIR(node_it->second->mode)) return 0;
 	}
 
@@ -402,8 +386,10 @@ int fs_opendir(const char *path, struct fuse_file_info *fi){
 int fs_chmod(const char *path, mode_t mode){
     debugf("fs_chmod: %s\n", path);
 
+    /* Check if path exists */
     if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
 
+    /* Set node's mode to new mode specified */
     node_it->second->mode = mode;
     debugf("    Changed mode for [%u] \"%s\"\n", node_it->second->id, node_it->second->name);
 	return 0;
@@ -415,8 +401,10 @@ int fs_chmod(const char *path, mode_t mode){
 int fs_chown(const char *path, uid_t uid, gid_t gid){
 	debugf("fs_chown: %s\n", path);
 
+    /* Check if path exists */
     if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
 
+    /* Set node's uid and gid to new uid and gid */
     node_it->second->uid = uid;
     node_it->second->gid = gid;
     debugf("    Changed ownership for [%u] \"%s\"\n", node_it->second->id, node_it->second->name);
@@ -438,7 +426,6 @@ int fs_unlink(const char *path){
 
     /* Check if inode is a directory, if it is return error */
     NODE *inode = node_it->second;
-    //if((inode->mode & ~(0xfff)) == S_IFDIR) return -EISDIR;
     if(S_ISDIR(inode->mode)) return -EISDIR;
 
     /* Delete inode and remove from maps/update block header */
@@ -458,9 +445,11 @@ int fs_unlink(const char *path){
 int fs_mkdir(const char *path, mode_t mode){
 	debugf("fs_mkdir: %s\n", path);
 
+    /* Check if path is too long and if path already exists */
     if(strlen(path) > NAME_SIZE) return -ENAMETOOLONG;
     if((node_it = inodes_map.find((char* ) path)) != inodes_map.end()) return -EEXIST;
 
+    /* Create new node, fill in info, add to inodes map and return */
     NODE *new_node = (NODE *) malloc(sizeof(NODE));
     strcpy(new_node->name, path);
     new_node->id = block_header->nodes + 1;
@@ -488,29 +477,26 @@ int fs_mkdir(const char *path, mode_t mode){
 int fs_rmdir(const char *path){
 	debugf("fs_rmdir: %s\n", path);
 
+    /* Check if path exists and is a directory type */
     if((node_it = inodes_map.find((char *) path)) == inodes_map.end()) return -ENOENT;
-    //if((node_it->second->mode & ~(0xfff)) != S_IFDIR) return -ENOTDIR;
     if(!S_ISDIR(node_it->second->mode)) return -ENOTDIR;
 
-    string del_path = node_it->first, cur_path, sub_path;
-    for(node_it; node_it != inodes_map.end(); node_it++){
-        cur_path = node_it->first;
-        if(cur_path.size() < del_path.size() || cur_path == del_path) continue;
-
-        uint64_t str_index;
-        str_index = cur_path.rfind("/");
-
-        if(cur_path == "/") sub_path = cur_path.substr(0, str_index + 1);
-        else sub_path = cur_path.substr(0, str_index);
-
-        debugf("    cur_path: %s   -----    sub_path: %s\n", cur_path.c_str(), sub_path.c_str());
-        if(cur_path != sub_path) return -ENOTEMPTY;
+    /* Save the path wanting to delete */
+    string del_path = node_it->first;
+    node_it++;
+    if(node_it != inodes_map.end()){
+        string next_node_name = node_it->first;
+        /* Check if the next node in the map as the same beginning path as del_path, return not empty if true */
+        if(next_node_name.substr(0, del_path.size()) == del_path) return -ENOTEMPTY;
     }
 
+    /* Delete node */
     node_it = inodes_map.find((char *) path);
-    free(node_it->second);
+    delete node_it->second;
     inodes_map.erase(node_it);
     block_header->nodes--;
+    debugf("    Removing %s\n", path);
+
 	return 0;
 }
 
@@ -608,7 +594,6 @@ void fs_destroy(void *ptr){
         if(fwrite(cur_node, ONDISK_NODE_SIZE, 1, harddrive) != 1) return;
 
         /* Write block number for regular files */
-        //if((cur_node->mode & ~(0xfff)) == S_IFREG){
         if(S_ISREG(cur_node->mode)){
             block_num = (cur_node->size / block_header->block_size) + 1;
             if(fwrite(cur_node->blocks, sizeof(uint64_t), block_num, harddrive) != block_num) return;
