@@ -32,3 +32,5 @@
 - [Processes](class_notes/COSC361-Processes.pdf)
 - [Scheduling](class_notes/COSC361-Scheduling.pdf)
 - [Concurrency](class_notes/COSC361-Concurrency.pdf)
+- [Files and Directories](class_notes/COSC361-FilesandDirectories.pdf)
+- [Filesystems](class_notes/COSC361-Filesystems.pdf)
