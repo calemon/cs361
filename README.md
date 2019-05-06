@@ -16,6 +16,12 @@
     - "Very well done!" Stephen Gregory Marz, Mar 9 at 4:16pm
     - "By the way, C-style string literals are const char * since they are r-values. That's why you get those warnings." Stephen Gregory Marz, Mar 9 at 4:16pm
 - [Lab 5](lab5/README.md): This project is all about implementing a file system in a true environment. You will be using a kernel module and library called FUSE--Filesystem in Userspace. This is a real filesystem in Linux and works with the Hydra machines. You will be writing several functions that read and write to a block file and allow the user to interact with your filesystem.
+  - Grade: 83/100
+    - -15 Input/output error while writing to file - Adam Connor Short, Apr 18 at 6:29pm
+    - -2 Does not change modify time in fs_open. - Adam Connor Short, Apr 18 at 6:31pm
+- [Lab X](labX/README.md): You will be writing a VIO (Virtual I/O) driver which probes, sets up, and reads from block and entropy (random) devices.
+  - DID NOT ATTEMPT
+
 
 ## Powerpoints
 
